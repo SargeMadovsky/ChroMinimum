@@ -79,6 +79,14 @@ jobs:
           printf '\nИсходный commit: `%s`. Сборка GitHub Actions: %s/actions/runs/%s\n' "$sha" "https://github.com/$GH_REPO" "$RUN_ID" >> notes.md
           mapfile -d '' assets < <(find artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.sha256' \) -print0)
           [[ ${#assets[@]} == 6 ]]
-          gh release create "$TAG" --target "$sha" --title "ChroMinimum $TAG" --notes-file notes.md --draft --prerelease
+          if gh release view "$TAG" --json isDraft > existing-release.json 2>/dev/null; then
+            # An owner may prepare the draft when repository policy blocks
+            # release creation by GITHUB_TOKEN. Never replace a public release.
+            python3 -c 'import json; assert json.load(open("existing-release.json"))["isDraft"]'
+            [[ "$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .object.sha)" == "$sha" ]]
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --target "$sha" --title "ChroMinimum $TAG" --notes-file notes.md --draft --prerelease
+          fi
           gh release upload "$TAG" "${assets[@]}"
           gh release edit "$TAG" --draft=false --prerelease
