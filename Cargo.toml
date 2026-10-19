@@ -1,0 +1,34 @@
+[package]
+name = "chrominimum"
+version = "0.0.1"
+edition = "2024"
+publish = false
+license = "MIT"
+autobins = false
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "bundle"
+path = "src/bin/bundle.rs"
+
+[[bin]]
+name = "chrominimum"
+path = "src/main.rs"
+
+[[bin]]
+name = "chrominimum_helper"
+path = "src/bin/helper.rs"
+
+[dependencies]
+# Pinned upstream source, including the Windows sandbox bootstrap support.
+cef = { git = "https://github.com/tauri-apps/cef-rs", rev = "163744c8286d5f593d89202c7807751a7898db28", default-features = false, features = ["sandbox", "build-util"] }
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.3"
+objc2-app-kit = { version = "=0.3.2", features = ["NSApplication", "NSEvent", "NSResponder"] }
+objc2-foundation = "=0.3.2"
+semver = "1"

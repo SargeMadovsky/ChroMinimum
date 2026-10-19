@@ -1,0 +1,12 @@
+/.research/
+/target/
+/.tools/
+/.cache/
+/test-profiles/
+/dist/
+/.local/
+/docs/reports/
+*.log
+.env
+.env.*
+!.env.example

@@ -1,0 +1,81 @@
+name: Build prototypes
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            name: windows-x64
+          - os: ubuntu-22.04
+            name: linux-x64
+          - os: macos-15
+            name: macos-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++-12 pkg-config libgtk-3-dev libnss3-dev libxss1 libasound2-dev libgbm-dev libx11-xcb1 xvfb openbox
+      - name: macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Build Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/build.ps1 -Release
+      - name: Build Unix release
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CC: gcc-12
+          CXX: g++-12
+        run: |
+          if [[ "$RUNNER_OS" == macOS ]]; then unset CC CXX; fi
+          bash scripts/build.sh
+      - name: Smoke Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/smoke.ps1 -Release
+      - name: Smoke Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a bash -c 'openbox >/tmp/chrominimum-openbox.log 2>&1 & timeout 65s bash scripts/smoke-unix.sh'
+      - name: Smoke macOS
+        if: runner.os == 'macOS'
+        run: bash scripts/smoke-unix.sh
+      - name: Rust license inventory
+        shell: bash
+        run: |
+          cargo install cargo-about --version 0.9.2 --locked --features cli
+          mkdir -p dist
+          cargo about generate --locked about.hbs -o dist/LICENSES-RUST.html
+      - name: Package
+        shell: bash
+        run: python scripts/package.py --name ChroMinimum-0.0.1-alpha.1-${{ matrix.name }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ChroMinimum-${{ matrix.name }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>ChroMinimum Rust dependency licenses</title>
+<style>body{max-width:80em;margin:2em auto;font-family:system-ui}pre{white-space:pre-wrap}</style>
+<h1>Rust dependency licenses</h1>
+<p>Chromium and CEF notices are provided separately in CREDITS.html and third_party/cef/LICENSE.</p>
+{{#each licenses}}<section><h2>{{name}}</h2><ul>{{#each used_by}}<li>{{crate.name}} {{crate.version}}</li>{{/each}}</ul><pre>{{text}}</pre></section>{{/each}}
+</html>

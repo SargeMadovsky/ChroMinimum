@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><title>Navigation fixture</title>
+<h1>Вторая тестовая страница</h1>
+<script>
+const navigation = performance.getEntriesByType('navigation')[0];
+document.title = navigation.type === 'reload'
+    ? 'ChroMinimum navigation reloaded' : 'ChroMinimum navigation ready';
+</script></html>
