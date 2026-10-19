@@ -1,0 +1,80 @@
+name: Publish alpha release
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Build prototypes run on main
+        required: true
+      tag:
+        description: Prerelease tag matching the artifact version
+        default: v0.0.1-alpha.1
+        required: true
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_ID: ${{ inputs.run_id }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Validate source build and download artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+$ ]]
+          gh run view "$RUN_ID" --json conclusion,status,headSha,headBranch,event,workflowName > source.json
+          python3 - <<'PY'
+          import json, pathlib
+          run = json.loads(pathlib.Path('source.json').read_text())
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['headBranch'] == 'main' and run['event'] == 'push'
+          assert run['workflowName'] == 'Build prototypes'
+          pathlib.Path('source-sha').write_text(run['headSha'])
+          PY
+          gh run download "$RUN_ID" --dir artifacts
+      - name: Verify release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, os, pathlib
+          root = pathlib.Path('artifacts')
+          version = os.environ['TAG'][1:]
+          for suffix in ('windows-x64.zip', 'linux-x64.tar.gz', 'macos-arm64.tar.gz'):
+              matches = list(root.rglob(f'ChroMinimum-{version}-{suffix}'))
+              assert len(matches) == 1, suffix
+              file = matches[0]
+              expected = file.with_name(file.name + '.sha256').read_text().split()[0]
+              with file.open('rb') as stream:
+                  assert hashlib.file_digest(stream, 'sha256').hexdigest() == expected, file
+          PY
+      - name: Publish complete prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha=$(cat source-sha)
+          cat > notes.md <<'EOF'
+          Первый рабочий прототип ChroMinimum: одно окно, сайты и PDF, нативная адресная строка и навигация, управление размером окна.
+
+          **Архивы:** Windows x64, Linux x64 и macOS Apple Silicon (ARM64). Распаковывайте архив целиком.
+
+          Все три сборки прошли автоматический smoke-тест запуска, локального HTML/JavaScript и навигации с включённой песочницей. Windows также проверен локально. Linux/macOS пока экспериментальные: ручная проверка на обычном рабочем столе не проводилась. macOS-сборка без нотарификации Apple, Windows-сборка без подписи издателя.
+
+          Пока нет вкладок, плагинов, автоматических обновлений и законченной системы разрешений. Popup заблокированы. Независимый аудит безопасности ещё не проводился.
+
+          В архивах находятся лицензии и уведомления Chromium/CEF и Rust-библиотек. Файлы `.sha256` позволяют проверить целостность скачивания.
+          EOF
+          printf '\nИсходный commit: `%s`. Сборка GitHub Actions: %s/actions/runs/%s\n' "$sha" "https://github.com/$GH_REPO" "$RUN_ID" >> notes.md
+          mapfile -d '' assets < <(find artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' -o -name '*.sha256' \) -print0)
+          [[ ${#assets[@]} == 6 ]]
+          gh release create "$TAG" --target "$sha" --title "ChroMinimum $TAG" --notes-file notes.md --draft --prerelease
+          gh release upload "$TAG" "${assets[@]}"
+          gh release edit "$TAG" --draft=false --prerelease
