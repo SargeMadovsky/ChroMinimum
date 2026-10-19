@@ -46,6 +46,10 @@ else:
     archive = dist / f'{args.name}.tar.gz'
     with tarfile.open(archive, 'w:gz', dereference=False) as out:
         out.add(stage, arcname=stage.name)
-digest = hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest()
+digest = hashlib.sha256()
+with archive.open('rb') as stream:
+    for block in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(block)
+digest = digest.hexdigest()
 archive.with_name(archive.name + '.sha256').write_text(f'{digest}  {archive.name}\n')
 print(archive)
