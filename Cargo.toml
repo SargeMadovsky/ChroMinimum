@@ -26,6 +26,10 @@ path = "src/bin/helper.rs"
 cef = { git = "https://github.com/tauri-apps/cef-rs", rev = "163744c8286d5f593d89202c7807751a7898db28", default-features = false, features = ["sandbox", "build-util"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_System_LibraryLoader"] }
+cef-dll-sys = { git = "https://github.com/tauri-apps/cef-rs", rev = "163744c8286d5f593d89202c7807751a7898db28", features = ["sandbox"] }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+cc = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "=0.6.3"

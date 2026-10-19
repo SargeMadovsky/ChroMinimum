@@ -1,12 +1,22 @@
 fn main() {
-    let output =
-        std::env::current_dir()
-            .expect("working directory")
-            .join(if cfg!(debug_assertions) {
-                "target/bundle"
-            } else {
-                "target/release-bundle"
-            });
+    #[cfg(target_os = "windows")]
+    if std::env::args().nth(1).as_deref() == Some("--icon") {
+        let file = std::env::args_os().nth(2).expect("executable path");
+        set_icon(std::path::Path::new(&file)).expect("icon update");
+        return;
+    }
+    let output = std::env::args_os()
+        .nth(1)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_dir()
+                .expect("working directory")
+                .join(if cfg!(debug_assertions) {
+                    "target/bundle"
+                } else {
+                    "target/release-bundle"
+                })
+        });
     let target = std::env::current_exe().expect("bundle helper path");
     let target = target.parent().expect("target directory");
     match platform_bundle(&output, target) {
@@ -30,7 +40,13 @@ fn platform_bundle(
     output: &std::path::Path,
     target: &std::path::Path,
 ) -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-    Ok(cef::build_util::win::bundle(output, target, "chrominimum")?)
+    let runtime = output.join("core/seed");
+    let executable = cef::build_util::win::bundle(&runtime, target, "chrominimum")?;
+    set_icon(&executable)?;
+    let launcher = std::env::current_dir()?.join("updater/target/release/cm-update.exe");
+    let output_exe = output.join("chrominimum.exe");
+    std::fs::copy(launcher, &output_exe)?;
+    Ok(output_exe)
 }
 
 #[cfg(target_os = "linux")]

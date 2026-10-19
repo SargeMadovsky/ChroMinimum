@@ -1,5 +1,7 @@
 /.research/
 /target/
+/updater/target/
+*.pk8
 /.tools/
 /.cache/
 /test-profiles/
@@ -10,3 +12,6 @@
 .env
 .env.*
 !.env.example
+*.pfx
+*.p12
+*.key

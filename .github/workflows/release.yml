@@ -7,7 +7,7 @@ on:
         required: true
       tag:
         description: Prerelease tag matching the artifact version
-        default: v0.0.1-alpha.1
+        default: v0.0.1-alpha.2
         required: true
 permissions:
   contents: read

@@ -19,17 +19,22 @@ is_mac = platform.system() == 'Darwin'
 if is_mac:
     shutil.copytree(bundle / 'chrominimum.app', stage / 'chrominimum.app', symlinks=True)
 else:
+    managed = (bundle / 'core' / 'seed').is_dir()
     for file in bundle.iterdir():
-        if file.is_file() and file.suffix.lower() not in {'.log', '.pdb'}:
+        if file.is_file() and file.suffix.lower() not in {'.log', '.pdb'} and (not managed or file.name == 'chrominimum.exe'):
             shutil.copy2(file, stage / file.name)
     if (bundle / 'locales').is_dir():
         shutil.copytree(bundle / 'locales', stage / 'locales')
+    if (bundle / 'core' / 'seed').is_dir():
+        shutil.copytree(bundle / 'core' / 'seed', stage / 'core' / 'seed',
+                        ignore=shutil.ignore_patterns('*.pdb', '*.log', 'profile*', 'core-running.lock'))
+        shutil.copy2(dist / 'LICENSES-UPDATER.html', stage / 'LICENSES-UPDATER.html')
 for name in ('LICENSE', 'README.md', 'THIRD_PARTY.md'):
     shutil.copy2(root / name, stage / name)
 shutil.copytree(root / 'third_party', stage / 'third_party')
 shutil.copy2(dist / 'LICENSES-RUST.html', stage / 'LICENSES-RUST.html')
 # CREDITS.html is supplied by the pinned CEF binary distribution.
-credits = list(bundle.rglob('CREDITS.html'))
+credits = [bundle / 'core' / 'seed' / 'CREDITS.html'] if (bundle / 'core' / 'seed').is_dir() else list(bundle.rglob('CREDITS.html'))
 if not credits:
     raise SystemExit('CEF/Chromium CREDITS.html missing: refusing incomplete release')
 shutil.copy2(credits[0], stage / 'CREDITS.html')

@@ -1,0 +1,4 @@
+# CEF's Windows wrapper is built with /MT. The native verified loader uses
+# its C++ code, so link the Rust DLL with the same static runtime.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

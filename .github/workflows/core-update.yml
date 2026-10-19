@@ -1,0 +1,133 @@
+name: Build and publish compatible core
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: core-update-stable
+  cancel-in-progress: false
+jobs:
+  candidate:
+    if: github.event_name == 'workflow_dispatch' || vars.CORE_UPDATES_ENABLED == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 45
+    outputs:
+      needed: ${{ steps.discover.outputs.needed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+      - name: Build shell and updater
+        shell: pwsh
+        run: ./scripts/build.ps1 -Release
+      - name: Test updater policy
+        shell: pwsh
+        run: |
+          cargo test --manifest-path updater/Cargo.toml --locked --release
+          if ($LASTEXITCODE -ne 0) { throw 'Updater policy tests failed' }
+      - name: Stage latest stable CEF with matching sandbox bootstrap
+        id: discover
+        shell: pwsh
+        env:
+          SEQUENCE: ${{ github.run_number }}
+        run: |
+          python scripts/fetch-core.py --bundle target/release-bundle --sequence "$env:SEQUENCE" --skip-unchanged
+          if ($LASTEXITCODE -ne 0) { throw 'CEF staging failed' }
+          $taskNeeded = Get-Content target/release-bundle/candidate-needed.txt -Raw
+          "needed=$taskNeeded" >> $env:GITHUB_OUTPUT
+          if ($taskNeeded -ne 'true') { exit 0 }
+          ./target/release/bundle.exe --icon target/release-bundle/core/seed/chrominimum.exe
+          if ($LASTEXITCODE -ne 0) { throw 'CEF icon packaging failed' }
+      - name: Exercise actual candidate runtime with sandbox
+        if: steps.discover.outputs.needed == 'true'
+        shell: pwsh
+        run: |
+          ./scripts/smoke.ps1 -Release
+          $taskVersion = Get-Content target/release-bundle/candidate-version.txt -Raw
+          $taskLog = Get-Content target/release-bundle/smoke.log -Raw
+          if (-not $taskLog.Contains("engine_version=$taskVersion")) { throw 'The tested runtime does not match the candidate' }
+          $taskPdf = ([Uri](Resolve-Path tests/fixtures/smoke.pdf).Path).AbsoluteUri
+          ./scripts/smoke.ps1 -Release -Url $taskPdf
+      - name: Package tested core and licenses
+        if: steps.discover.outputs.needed == 'true'
+        shell: pwsh
+        env:
+          SEQUENCE: ${{ github.run_number }}
+        run: |
+          cargo install cargo-about --version 0.9.2 --locked --features cli
+          if ($LASTEXITCODE -ne 0) { throw 'License tool installation failed' }
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          cargo about generate --locked about.hbs -o dist/LICENSES-RUST.html
+          if ($LASTEXITCODE -ne 0) { throw 'License inventory failed' }
+          $taskVersion = Get-Content target/release-bundle/candidate-version.txt -Raw
+          python scripts/package-core.py --bundle target/release-bundle/core/seed --output "dist/core-$env:SEQUENCE-windows-x64.tar.gz" --sequence "$env:SEQUENCE" --min-safe-sequence "$env:SEQUENCE" --engine-version "$taskVersion" --release-tag core-windows-x64
+          if ($LASTEXITCODE -ne 0) { throw 'Core packaging failed' }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: steps.discover.outputs.needed == 'true'
+        with:
+          name: tested-core
+          path: |
+            dist/core-*.tar.gz
+            dist/core-*.manifest.json
+          if-no-files-found: error
+          retention-days: 7
+  sign-and-publish:
+    needs: candidate
+    if: needs.candidate.outputs.needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Download successful candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh run download "$GITHUB_RUN_ID" --name tested-core --dir candidate
+      - name: Build signing tool from the same source
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal
+          cargo build --manifest-path updater/Cargo.toml --locked --release
+      - name: Sign and verify candidate metadata
+        env:
+          CORE_SIGNING_KEY: ${{ secrets.CORE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$RUNNER_TEMP/core-signing.pk8"' EXIT
+          python3 - <<'PY'
+          import base64, glob, hashlib, json, os, pathlib
+          secret = os.environ.pop('CORE_SIGNING_KEY', '')
+          if not secret:
+              raise SystemExit('CORE_SIGNING_KEY is not configured; refusing unsigned publication')
+          key = pathlib.Path(os.environ['RUNNER_TEMP']) / 'core-signing.pk8'
+          key.write_bytes(base64.b64decode(secret, validate=True))
+          key.chmod(0o600)
+          manifest = pathlib.Path(glob.glob('candidate/*.manifest.json')[0])
+          data = json.loads(manifest.read_text())
+          package = pathlib.Path('candidate') / data['url'].rsplit('/', 1)[-1]
+          with package.open('rb') as stream:
+              assert hashlib.file_digest(stream, 'sha256').hexdigest() == data['sha256']
+          assert package.stat().st_size == data['size']
+          PY
+          unset CORE_SIGNING_KEY
+          updater/target/release/cm-update --sign candidate/*.manifest.json "$RUNNER_TEMP/core-signing.pk8" candidate/core-update.json
+          updater/target/release/cm-update --verify candidate/core-update.json
+      - name: Publish package first, authenticated channel metadata last
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if ! gh release view core-windows-x64 >/dev/null 2>&1; then
+            gh release create core-windows-x64 --target "$GITHUB_SHA" --title 'ChroMinimum core updates — Windows x64' --prerelease --notes 'Experimental signed core update channel. Packages are tested with sandbox enabled. This channel does not replace the first installation of ChroMinimum.'
+          fi
+          gh release upload core-windows-x64 candidate/*.tar.gz
+          gh release upload core-windows-x64 candidate/core-update.json --clobber

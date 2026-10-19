@@ -1,4 +1,4 @@
-param([switch]$Release)
+param([switch]$Release, [string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path $PSScriptRoot -Parent
 $taskVswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -9,11 +9,15 @@ Import-Module (Join-Path $taskVsRoot 'Common7\Tools\Microsoft.VisualStudio.DevSh
 Enter-VsDevShell -VsInstallPath $taskVsRoot -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
 Push-Location $taskRoot
 try {
+    cargo build --manifest-path updater/Cargo.toml --locked --release
+    if ($LASTEXITCODE -ne 0) { throw "Updater build failed: $LASTEXITCODE" }
     $taskArgs = @('build', '--locked', '--lib', '--bin', 'bundle')
     if ($Release) { $taskArgs += '--release' }
     cargo @taskArgs
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $LASTEXITCODE" }
     $taskProfile = if ($Release) { 'release' } else { 'debug' }
-    & (Join-Path $taskRoot "target\$taskProfile\bundle.exe")
+    $taskBundleArgs = @()
+    if ($OutputDirectory) { $taskBundleArgs += $OutputDirectory }
+    & (Join-Path $taskRoot "target\$taskProfile\bundle.exe") @taskBundleArgs
     if ($LASTEXITCODE -ne 0) { throw "Packaging failed: $LASTEXITCODE" }
 } finally { Pop-Location }

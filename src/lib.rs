@@ -4,6 +4,9 @@
 #[cfg(target_os = "macos")]
 mod mac;
 
+#[cfg(target_os = "windows")]
+mod core_updates;
+
 use cef::*;
 use std::rc::Rc as UiRef;
 use std::{
@@ -59,6 +62,11 @@ wrap_button_delegate! {
     impl ViewDelegate {}
     impl ButtonDelegate {
         fn on_button_pressed(&self, _button: Option<&mut Button>) {
+            if self.action == 4 {
+                #[cfg(target_os = "windows")]
+                core_updates::check();
+                return;
+            }
             let (browser, loading) = { let nav = self.nav.borrow(); (nav.browser.clone(), nav.loading) };
             if let Some(browser) = browser {
                 match self.action {
@@ -132,6 +140,23 @@ fn toolbar(nav: &Nav) -> Option<Panel> {
     let mut view = View::from(&field);
     panel.add_child_view(Some(&mut view));
     layout.set_flex_for_view(Some(&mut view), 1);
+    #[cfg(target_os = "windows")]
+    {
+        let mut delegate = NavigationButton::new(nav.clone(), 4);
+        let button = label_button_create(
+            Some(&mut delegate),
+            Some(&CefString::from("Обновления ядра")),
+        )?;
+        button.set_accessible_name(Some(&CefString::from("Проверить обновления ядра")));
+        button.set_tooltip_text(Some(&CefString::from("Проверить обновления ядра")));
+        button.set_minimum_size(Some(&Size {
+            width: 152,
+            height: 32,
+        }));
+        let mut view = View::from(&button);
+        panel.add_child_view(Some(&mut view));
+        core_updates::button(button);
+    }
     let mut state = nav.borrow_mut();
     state.back = Some(buttons.remove(0));
     state.forward = Some(buttons.remove(0));
@@ -159,7 +184,14 @@ unsafe extern "C" fn RunWinMain(
     _command_line: *const u8,
     _command_show: i32,
     sandbox_info: *mut u8,
+    version_info: *mut std::ffi::c_void,
 ) -> i32 {
+    unsafe extern "C" {
+        fn cm_load_engine(info: *mut std::ffi::c_void, managed: bool) -> i32;
+    }
+    if unsafe { cm_load_engine(version_info, false) } != 1 {
+        return 1;
+    }
     // Never unwind a Rust panic across the bootstrap's C ABI boundary.
     std::panic::catch_unwind(|| run(args::Args::from(MainArgs { instance }), sandbox_info))
         .unwrap_or(1)
@@ -189,6 +221,11 @@ fn run(args: args::Args, sandbox_info: *mut u8) -> i32 {
     if child_exit >= 0 {
         return child_exit;
     }
+    #[cfg(target_os = "windows")]
+    let _runtime_lease = match core_updates::runtime_lease() {
+        Ok(lease) => lease,
+        Err(_) => return 1,
+    };
 
     #[cfg(target_os = "windows")]
     let Some(directory) = std::env::current_exe()
@@ -229,6 +266,20 @@ fn run(args: args::Args, sandbox_info: *mut u8) -> i32 {
             return 1;
         }
         let _ = SMOKE_LOG.set(path);
+        #[cfg(target_os = "windows")]
+        {
+            // Stable CEF C API (15101+); not exposed by this cef-rs revision.
+            unsafe extern "C" {
+                fn cef_version_full() -> *const std::ffi::c_char;
+            }
+            let version = unsafe { cef_version_full() };
+            if !version.is_null() {
+                smoke_event(&format!(
+                    "engine_version={}",
+                    unsafe { std::ffi::CStr::from_ptr(version) }.to_string_lossy()
+                ));
+            }
+        }
     }
     let profile = directory.join(if smoke { "profile-smoke" } else { "profile" });
     if std::fs::create_dir_all(&profile).is_err() {
@@ -253,6 +304,8 @@ fn run(args: args::Args, sandbox_info: *mut u8) -> i32 {
         initial_url
     };
     let mut app = BrowserApp::new(initial_url, smoke);
+    #[cfg(target_os = "windows")]
+    core_updates::configure(directory.clone());
     if initialize(
         Some(args.as_main_args()),
         Some(&settings),
@@ -262,7 +315,11 @@ fn run(args: args::Args, sandbox_info: *mut u8) -> i32 {
     {
         return 1;
     }
+    #[cfg(target_os = "windows")]
+    core_updates::initialize(smoke);
     run_message_loop();
+    #[cfg(target_os = "windows")]
+    core_updates::shutdown_bridge();
     shutdown();
     smoke_event("shutdown_complete");
     0
@@ -463,6 +520,11 @@ wrap_task! {
                 }
                 4 if title == "ChroMinimum navigation reloaded" => {
                     smoke_event("reload_button_navigated");
+                    #[cfg(target_os = "windows")]
+                    if std::env::args().any(|a| a == "--exercise-updater") {
+                        NavigationButton::new(self.nav.clone(), 4).on_button_pressed(None);
+                        smoke_event("core_update_button_pressed");
+                    }
                     if cfg!(target_os = "windows") && let Some(window) = field.window() {
                         let original = window.bounds();
                         let mut probe = WindowProbe::new(window, original, 0);
@@ -578,7 +640,8 @@ wrap_life_span_handler! {
             smoke_event("browser_created");
             if self.smoke && let Some(browser) = browser {
                     let mut close = SmokeClose::new(browser.clone());
-                    post_delayed_task(ThreadId::UI, Some(&mut close), 30000);
+                    let timeout = if std::env::args().any(|a| a == "--exercise-updater") { 120000 } else { 30000 };
+                    post_delayed_task(ThreadId::UI, Some(&mut close), timeout);
             }
         }
         fn on_before_close(&self, _browser: Option<&mut Browser>) {
@@ -621,6 +684,10 @@ wrap_load_handler! {
         }
         fn on_load_end(&self, _browser: Option<&mut Browser>, frame: Option<&mut Frame>, status: i32) {
             if frame.is_some_and(|f| f.is_main() != 0) {
+                #[cfg(target_os = "windows")]
+                if (0..400).contains(&status) {
+                    core_updates::healthy();
+                }
                 smoke_event(&format!("main_frame_loaded; status={status}"));
                 eprintln!("ChroMinimum main frame loaded; status={status}");
                 let start_probe = {
@@ -640,6 +707,8 @@ wrap_load_handler! {
             _text: Option<&CefString>, _url: Option<&CefString>,
         ) {
             if frame.is_some_and(|f| f.is_main() != 0) {
+                #[cfg(target_os = "windows")]
+                core_updates::healthy(); // A network/TLS failure is not a failed engine startup.
                 smoke_event(&format!("main_frame_error; code={code:?}"));
                 eprintln!("ChroMinimum main frame load error: {code:?}");
             }

@@ -5,3 +5,4 @@
 *.toml text eol=lf
 *.png binary
 *.ico binary
+*.pdf binary

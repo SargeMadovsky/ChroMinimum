@@ -1,0 +1,23 @@
+[package]
+name = "cm-update"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+ring = "=0.17.14"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+tar = "=0.4.46"
+flate2 = "=1.1.10"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Storage_FileSystem", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+strip = true
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
