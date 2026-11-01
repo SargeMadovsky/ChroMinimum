@@ -488,6 +488,6 @@
   принятый adapter cb0558b0…. Сайт/GitHub не публиковались, Authenticode нет.
   [Отчёт](reports/downloads-branding-20261101/summary.json).
 
-- [ ] Публикация alpha.8 (2026-11-01) разрешена владельцем: подготовлены полный setup, source materials и RU/EN описание сайта; проверяется доставка в GitHub/Pages.
+- [x] Alpha.8 опубликована в GitHub по разрешению владельца: полный setup, SHA256SUMS, лицензии и source materials. RU/EN описание сайта обновлено (website commit 194d8e4). [Публикация](RELEASE_PUBLICATION_20261101.md).
 
 - [x] Сохранено обновление README screenshot из GitHub commit 2bbab9b (2026-10-21); сайт хранится в отдельном репозитории.
