@@ -1,0 +1,19 @@
+{
+  "status": "external_protocols_integrated_local_build_not_release_ready",
+  "cef_commit": "14c5a089e8452874cb1a556dc3fde26ed2d87723",
+  "cef_branch": "8037",
+  "chromium": "154.0.8037.98",
+  "chromium_commit": "b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+  "chromium_deps_sha256": "dc1d7007e7d992729d3d34b79c2443971cd07029c5599856a16ddecd445c532d",
+  "depot_tools_commit": "1eb46f8b23b4c6b3caa2be8e05999b6d1f4d0253",
+  "automate_git_sha256": "fe0c880fd2a91ac3ab4c82301f596295cecc1901e503507e36300a5b58578dcd",
+  "required_patches": [
+    "0001-no-startup-listaccounts",
+    "0012-cef-native-external-protocols",
+    "0013-cef-explicit-numeric-protocol"
+  ],
+  "required_enabled_features": [
+    "AvoidAutoTriggerListAccountsOnStale"
+  ],
+  "release_ready": false
+}

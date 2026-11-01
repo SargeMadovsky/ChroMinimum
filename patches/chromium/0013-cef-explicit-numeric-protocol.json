@@ -1,0 +1,11 @@
+{
+  "chromium": "154.0.8037.98",
+  "cef_revision": "14c5a08",
+  "purpose": "Preserve explicit numeric custom-scheme GURL after embedder host:port classification; keep Chrome consent/policies",
+  "files": {
+    "cef/libcef/browser/chrome/chrome_browser_host_impl.cc": {
+      "before_sha256": "108edcec5da63ddf6230865d026785ae86e5dd8a1a622ffff8cae500896420d0",
+      "after_sha256": "64cd98392450e6a53163d2689099d67fdda4bbdaa11cad740bcf6cc49f0c1c51"
+    }
+  }
+}

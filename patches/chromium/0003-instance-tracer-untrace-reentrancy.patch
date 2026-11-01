@@ -1,0 +1,17 @@
+--- a/base/allocator/partition_allocator/src/partition_alloc/pointers/instance_tracer.cc
++++ b/base/allocator/partition_allocator/src/partition_alloc/pointers/instance_tracer.cc
+@@ -69,8 +69,12 @@
+ 
+ void InstanceTracer::UntraceImpl(uint64_t owner_id) {
+   PA_CHECK(owner_id);
+-  const std::lock_guard guard(GetStorageMutex());
+-  GetStorage().erase(owner_id);
++  // Destroy the extracted node after releasing the storage mutex. Allocator
++  // free hooks may themselves destroy raw_ptr instances and re-enter Untrace.
++  [[maybe_unused]] auto removed = [&] {
++    const std::lock_guard guard(GetStorageMutex());
++    return GetStorage().extract(owner_id);
++  }();
+ }
+ 
+ std::vector<std::array<const void*, 32>>

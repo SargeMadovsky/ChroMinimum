@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "root": "..",
+  "readiness": "video/game/WebRTC local pilots; not final suite",
+  "fixture": {
+    "path": ".local/product-validation-20261024/long-video-fixture/synthetic-720p30-75s.mp4",
+    "sha256": "822b5adb5ba89c237a7d7299ea27f32513d79e865183b93920a7abc37be65f0d"
+  },
+  "browsers": {
+    "CM": {
+      "exe": {
+        "path": ".local/product-validation-20261024/runtime/chrominimum.exe",
+        "sha256": "ba47247b0f6c779373219ab33affc7f722a522b827d51acb6b59da6b1d4103ec"
+      },
+      "engine": {
+        "path": ".local/product-validation-20261024/runtime/libcef.dll",
+        "sha256": "ef8d6219fb826b586ca25b60f6583ba0c1453cb9172051521a02f5fb8057e020"
+      },
+      "fileVersion": "154.0.0-HEAD.1+g14c5a08+chromium-154.0.8037.98"
+    },
+    "UC": {
+      "exe": {
+        "path": "test-profiles/comparison-2026-10-19/browsers/ungoogled-chromium/ungoogled-chromium_155.0.8059.79-1.1_windows_x64/chrome.exe",
+        "sha256": "da78be56bcf8f6f61c5af79f865b104f568e822e20d5a94492bebefe79643374"
+      },
+      "engine": {
+        "path": "test-profiles/comparison-2026-10-19/browsers/ungoogled-chromium/ungoogled-chromium_155.0.8059.79-1.1_windows_x64/chrome.dll",
+        "sha256": "e790b41d281644f250c1aa153243afb4625e6fd5ac3425e275396b59ecd10fa7"
+      },
+      "fileVersion": "155.0.8059.79"
+    },
+    "Chrome": {
+      "exe": {
+        "path": "test-profiles/comparison-2026-10-19/browsers/chrome/Chrome-bin/chrome.exe",
+        "sha256": "de999bce6a1c954df71a8f15bf751b336172f55ac1a0325bb0580cbc2121268c"
+      },
+      "engine": {
+        "path": "test-profiles/comparison-2026-10-19/browsers/chrome/Chrome-bin/155.0.8059.85/chrome.dll",
+        "sha256": "e68448d4469e6a3b598cfce48e656a5579decac014407eb4c4967d0677fed2fb"
+      },
+      "fileVersion": "155.0.8059.85"
+    }
+  },
+  "game": {
+    "path": ".local/product-validation-20261024/game-fixture-pinned/manifest.json",
+    "sha256": "d15d988fcae1188336c653059146c1415111a0bea5288f01b0d7edd131ce7daf"
+  }
+}

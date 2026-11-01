@@ -1,0 +1,49 @@
+{
+  "ffmpeg_commit": "a06d51a20a28f980b2ddc6b7d73d69b2d29bf323",
+  "files": {
+    "chromium/config/Chromium/win/x64/config.h": {
+      "before_sha256": "9ff8505f592dfd7159dcf56ed4a4d8d43be63c5de91df62e1edeaac2cc85c78f",
+      "after_sha256": "52606fb44522322aabc60828db28685545a4992e3da040bc3b278d6cff00ad1d"
+    },
+    "chromium/config/Chromium/win/x64/config_components.h": {
+      "before_sha256": "f9411729b8c2bce3b4adb477893205900f04e1574fc25ede7502e4b830e5eee6",
+      "after_sha256": "dd1ccdba1c0619e93240d7dc04325fdcb7376d73c1bd72b7ef75f48c6355f1be"
+    },
+    "chromium/config/Chromium/win/x64/config_components.asm": {
+      "before_sha256": "510cadb0cb706728d9513ad4d89e305f08f270f11dba9a7fbe97e19c906ffc30",
+      "after_sha256": "b6af62c6cb0549bee0b7760d82e45030b945cfd1ba6294eabca42f932d271508"
+    },
+    "chromium/config/Chromium/win/x64/libavcodec/parser_list.c": {
+      "before_sha256": "6a004f9bc097280a252a03d656a4b14ba109717eb46a3e4692683d67df72d1be",
+      "after_sha256": "117d2bd3ff22ef9fe43a42f862689b766fe3c136c304635053cff96fba989208"
+    },
+    "chromium/config/Chromium/win/x64/libavformat/demuxer_list.c": {
+      "before_sha256": "3bf2a158ad6fbf424a4100f51e6bbf6fc1e8bfa31c196cf6080721668e7cb70b",
+      "after_sha256": "71b14f15be7909233422de758a5c9e6a9e4ab1a773ea666fd621cd6cf40aa5f5"
+    },
+    "ffmpeg_generated.gni": {
+      "before_sha256": "f0a7e8440c3445bb7c9839c2dc3c5406ecb8a80669104799383fa9ab4a7b28e6",
+      "after_sha256": "2d47d225a35aa9e77c25268783247c56091b064cb0761e4361390be5f24151ee",
+      "previous_experimental_sha256": "44646806819d8db83805d3a0d3cca1dff44db98ad6d43eb5a8797ce8a0e3b75e"
+    },
+    "libavcodec/aac_ac3_parser.c": {
+      "before_sha256": "b45b473c1537fc761ab72788654bb47da8427903af8899b0f77ecab22d8906f8",
+      "after_sha256": "f67db9ab0f32fe9b912e0cb36b8c73dc08fbb60d0c948c37e9efdec54527063b",
+      "previous_experimental_sha256": "29bc34aa559665451fdd1cba81ad0b40f0a8e5cf9fcee5d8f3508bffde61cb5e"
+    },
+    "chromium/config/Chromium/win/x64/config.asm": {
+      "before_sha256": "9210215c282429b266ae41908c6e0ed9726efdc594db75e6a46a4a06abbbc40d",
+      "after_sha256": "37281ab5b848f22a334522cebfb13470d7f9f0d7e2266bfe25d3f1538ef4c452"
+    }
+  },
+  "scope": "Chromium Windows x64 ADTS demux/parser and AAC-LC metadata, all AAC decoders/encoders stay off",
+  "limitations": [
+    "Explicit AAC-LC channel config 1..7 only",
+    "No PCE, multiple raw blocks, other ADTS profiles",
+    "WebAudio decoder path unchanged"
+  ],
+  "compiled": true,
+  "runtime_validated": false,
+  "compiled_scope": "FFmpeg archives and standalone probe only; CEF relink pending",
+  "native_cases_passed": 13
+}

@@ -1,0 +1,17 @@
+{
+  "date": "2026-10-24",
+  "scope": "Website assets; audited local comparison, 75 accepted attempts",
+  "files": {
+    "browser-comparison-2026-10-24-dark.png": "2527cd8e6d62d96fa7328275f77bca9e534e263d281c7299e7a96c4a9a56c420",
+    "browser-comparison-2026-10-24-dark.svg": "37c1ddbd3faf6d2a6a519b38774bba28365d44509db52d16611dc672e10497e5",
+    "browser-comparison-2026-10-24-dark.webp": "5f51a6376a6310ee9a20db583ca59b2a1c247da9f21eaf58ea925b1bf83eafb3",
+    "browser-comparison-2026-10-24.png": "3d41840f34a4c45edb5edd0b6bc4f9a246b39ad2e24447effd22bbf1eed6df65",
+    "browser-comparison-2026-10-24.svg": "0fa7485d6df55279d56ef6b0c3a8ac61e47ba7ff361b04ad1e0188aeeb2cac94",
+    "browser-comparison-2026-10-24.webp": "807217add9fcd604b8b5f7ad4cb1ee467b2e1e4f2565d5388de2c441477d6cdb",
+    "preview.html": "1ea40eb6595c1b67e4f22d4113f6b91adaa1090f31b794586c32d224ef779fc9",
+    "results.csv": "32fa110428353eb0e87b586240d4915a4e57e4d36900809a3ea44f7c5cf0a247",
+    "results.json": "071c1db6709992d4d43f1d0fa65973067278c344292e1bc39775544a6d9bf067",
+    "section.html": "6250116a0426448bf170ca8dc224d768feda363b94f033108724686ae261bb00",
+    "website-copy.ru.md": "c1f2716199c0022879dd7956d85d4edcc6025b86d6f6c3adf90021d9232c8abf"
+  }
+}

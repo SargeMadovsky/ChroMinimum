@@ -1,0 +1,76 @@
+{
+  "requires": "0010-async-audio-file-reader-prototype.patch",
+  "scope": "Windows AAC async fallback in Blink platform/media; original Platform API unchanged",
+  "applied_to_experimental_checkout": true,
+  "staged_objects_compiled": true,
+  "cef_relinked": true,
+  "browser_runtime_validated": true,
+  "prototype_timeout_seconds": 30,
+  "files": {
+    "media/filters/audio_file_reader.h": {
+      "before_sha256": "1e34ec08762039641e79e27d69426817fe29bc02a1da23adc43f0d29cce61f66",
+      "after_sha256": "ff10d681d7f9970b7f4a0206b21bde0bee8be7b5f61a15dc501926802654c9c4"
+    },
+    "media/filters/audio_file_reader.cc": {
+      "before_sha256": "18b549bd8b20fe57054f800e2ede5a41560d9a7be050edd98cc657af5750ae01",
+      "after_sha256": "5a61bca45138125c4edc2956ab98f05a532063529fed5df6f0dd6d7d7a22fd66"
+    },
+    "third_party/blink/renderer/platform/media/async_audio_file_decoder.h": {
+      "before_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "after_sha256": "cb277841a62b5bb20447931a6bb9f2b05cce96dc1b0ba26772891f33768e1f50"
+    },
+    "third_party/blink/renderer/platform/media/async_audio_file_decoder.cc": {
+      "before_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "after_sha256": "70f3cd28a534a7a2369b86fe1c08345803922c6329a56147cd9b364c825b1d25"
+    },
+    "third_party/blink/renderer/platform/media/BUILD.gn": {
+      "before_sha256": "7352243a806b330fee5952647a7e28437c3887ca99ba949044b1058d4b5d4768",
+      "after_sha256": "19195a276964647e2a6153a7a6c7f0de82eac61ff3e3bf7520542384a6910f77"
+    },
+    "third_party/blink/renderer/platform/media/DEPS": {
+      "before_sha256": "250884083277edcbabbede4bf7766c78d1e23ae3afcdaf3325df7d03e6347a7a",
+      "after_sha256": "69dca1ef639b6666e201b3792bc77955c89f97b6ad5f267445ab6d10983e8c79"
+    },
+    "third_party/blink/renderer/modules/webaudio/base_audio_context.h": {
+      "before_sha256": "07985a53804b5b88174c63fb7b02013408fb8436ec4a415c0af67fbc7cd8f55f",
+      "after_sha256": "3f6db60b92258f5f07f3914fc5c7bb80a2f02b5476731c8b98e364011196ac0e"
+    },
+    "third_party/blink/renderer/modules/webaudio/base_audio_context.cc": {
+      "before_sha256": "ba9082badaa57937d1360f68fd699e75f41cf9a8652d4f6e40ffca5e01845215",
+      "after_sha256": "8b6cf01e7a2719967b06ee3b1247d0b9bd03d2b8ad6bf26855c734c666184209"
+    },
+    "media/mojo/clients/BUILD.gn": {
+      "before_sha256": "c7a41e1448addb3e08dcf9000bf8714c3e258aa0c749b76cbe1da41e4b0d6065",
+      "after_sha256": "3d0bce24dec6ceafd86f4de5c724db16fcc71f4496b217af31b8bf45a3b27afc"
+    },
+    "media/filters/audio_file_reader_unittest.cc": {
+      "before_sha256": "5ae1670674dd01473e37cb8762f9e7ca3a1726fd53b1055853b2ef82a0e98383",
+      "after_sha256": "19d29bf112fe6d4152ef6132647bbf926af068ce119733c3a3d169a9657159d6"
+    }
+  },
+  "limitations": [
+    "AAC-only, invoked after old synchronous path fails",
+    "One encoded input copy in fallback",
+    "Timeout is experimental, not a release policy",
+    "Browser cancellation/PCM/resampling still require runtime proof"
+  ],
+  "closed_context_reference_passed": true,
+  "gn_visibility_exception": "//media/mojo/clients -> //third_party/blink/renderer/platform/media:media_final only",
+  "native_mf_pcm_test": {
+    "passed": true,
+    "cases": 6,
+    "report": "docs/reports/webaudio-native-mf-20261029/summary.json"
+  },
+  "browser_runtime_validation": {
+    "aac_matrix_passed": true,
+    "closed_context_passed": true,
+    "sandbox_tokens_passed": true,
+    "lifecycle_passed": true,
+    "lifecycle_status": "two_runs_passed_after_readiness_fix",
+    "report": "docs/reports/webaudio-platform-aac-runtime-20261030/summary.json",
+    "lifecycle_report": "docs/reports/webaudio-lifecycle-20261030/summary.json",
+    "media_regression_report": "docs/reports/webaudio-media-regression-20261031/summary.json"
+  },
+  "dll_sha256": "f41f1d3149f53bb54b53a5b16cfa1f1bba42751f82544fb2fa2eae7d13d5a30b",
+  "binary_absence_proven": false
+}

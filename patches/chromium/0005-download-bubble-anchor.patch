@@ -1,0 +1,141 @@
+--- a/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
++++ b/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
+@@ -9,6 +9,8 @@
+ DEFINE_USER_DATA(DownloadToolbarUIController);
+ 
+ #include <optional>
++
++#include "base/command_line.h"
+ #include <string>
+ 
+ #include "base/functional/bind.h"
+@@ -73,6 +75,7 @@
+ #include "ui/views/controls/image_view.h"
+ #include "ui/views/controls/progress_ring_utils.h"
+ #include "ui/views/event_monitor.h"
++#include "ui/views/view.h"
+ #include "ui/views/view_class_properties.h"
+ #include "ui/views/widget/widget.h"
+ 
+@@ -102,6 +105,23 @@
+ ToolbarButton* GetDownloadsButton(BrowserView* browser_view) {
+   auto* container = GetPinnedToolbarActions(browser_view);
+   return container ? container->GetDownloadButton() : nullptr;
++}
++
++// Shared opt-in ID with the ChroMinimum CEF Views download button.
++constexpr int kChroMinimumDownloadAnchorViewId = 0x434d4401;
++
++views::View* GetChroMinimumDownloadAnchor(BrowserView* browser_view) {
++  if (!browser_view || !browser_view->GetWidget()) {
++    return nullptr;
++  }
++  return browser_view->GetWidget()->GetRootView()->GetViewByID(
++      kChroMinimumDownloadAnchorViewId);
++}
++
++bool IsChroMinimumDownloadProbe() {
++  const auto* command = base::CommandLine::ForCurrentProcess();
++  return command->HasSwitch("smoke-test") &&
++         command->HasSwitch("test-chrome-downloads");
+ }
+ 
+ class DownloadProgressRing : public views::View, gfx::AnimationDelegate {
+@@ -510,7 +530,12 @@
+   // Whether to update the icon after processing any changes.
+   bool update_icon = false;
+ 
+-  if (updates.show_animation && show_download_started_animation_) {
++  if (updates.show_animation && GetChroMinimumDownloadAnchor(browser_view_) &&
++      IsChroMinimumDownloadProbe()) {
++    LOG(INFO) << "CM_DOWNLOAD_FLIGHT_SUPPRESSED";
++  }
++  if (updates.show_animation && show_download_started_animation_ &&
++      !GetChroMinimumDownloadAnchor(browser_view_)) {
+     has_pending_download_started_animation_ = true;
+     if (auto* container = GetPinnedToolbarActions(browser_view_)) {
+       container->PostOrQueueActionAfterAnimation(base::BindOnce(
+@@ -848,6 +873,9 @@
+   }
+   CHECK(show_download_started_animation_);
+   has_pending_download_started_animation_ = false;
++  if (GetChroMinimumDownloadAnchor(browser_view_)) {
++    return;
++  }
+   if (!gfx::Animation::ShouldRenderRichAnimation()) {
+     return;
+   }
+@@ -957,6 +985,15 @@
+     pending_security_content_ = content_id;
+   }
+   if (pending_bubble_) {
++    return;
++  }
++
++  if (auto* anchor = GetChroMinimumDownloadAnchor(browser_view_)) {
++    if (!anchor->IsDrawn()) {
++      return;
++    }
++    pending_bubble_ = true;
++    OnBubbleAnchorAssembled(base::ok(views::BubbleAnchor(anchor)));
+     return;
+   }
+ 
+@@ -1059,6 +1096,18 @@
+   } else {
+     bubble_widget->Show();
+   }
++  if (auto* custom = GetChroMinimumDownloadAnchor(browser_view_);
++      custom && IsChroMinimumDownloadProbe()) {
++    const auto a = custom->GetBoundsInScreen();
++    const auto b = bubble_widget->GetWindowBoundsInScreen();
++    LOG(INFO) << "CM_DOWNLOAD_BUBBLE mode="
++              << (primary_view_mode_ == DownloadBubbleMode::kComplete
++                      ? "complete" : "partial")
++              << " anchor=" << a.x() << "," << a.y() << ","
++              << a.width() << "," << a.height()
++              << " bubble=" << b.x() << "," << b.y() << ","
++              << b.width() << "," << b.height();
++  }
+   bubble_closer_ = std::make_unique<BubbleCloser>(anchor.value(), bubble_widget,
+                                                   weak_factory_.GetWeakPtr());
+ 
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -92,7 +92,9 @@
+ #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+ #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
+ #include "chrome/browser/ui/ui_features.h"
++#include "chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
++#include "ui/views/widget/widget.h"
+ #include "chrome/browser/ui/views/side_panel/tabs_from_other_devices/tabs_from_other_devices_side_panel_coordinator.h"
+ #include "chrome/browser/ui/web_applications/app_browser_controller.h"
+ #include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
+@@ -1279,9 +1281,25 @@
+           SidePanelEntryId::kTabsFromOtherDevices,
+           SidePanelOpenTrigger::kAppMenu);
+       break;
+-    case IDC_SHOW_DOWNLOADS:
++    case IDC_SHOW_DOWNLOADS: {
++      // Only the custom CEF toolbar opts in. Invoke the existing complete
++      // download bubble; an empty history keeps Chrome's normal page fallback.
++      auto* view = BrowserView::GetBrowserViewForBrowser(browser_);
++      if (view && view->GetWidget()) {
++        auto* anchor = view->GetWidget()->GetRootView()->GetViewByID(0x434d4401);
++        auto* downloads = DownloadToolbarUIController::From(browser_);
++        if (anchor && anchor->IsDrawn() && downloads) {
++          if (downloads->IsShowingDetails()) {
++            downloads->HideDetails();
++          } else {
++            downloads->InvokeUI();
++          }
++          break;
++        }
++      }
+       ShowDownloads(webui::GetBrowserForOpeningWebUi(browser_));
+       break;
++    }
+     case IDC_SHOW_COMMENTS_SIDE_PANEL:
+       browser_->GetFeatures().side_panel_ui()->Show(
+           SidePanelEntryId::kComments, SidePanelOpenTrigger::kAppMenu);

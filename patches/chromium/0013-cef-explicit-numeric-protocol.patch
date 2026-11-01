@@ -1,0 +1,36 @@
+--- a/cef/libcef/browser/chrome/chrome_browser_host_impl.cc
++++ b/cef/libcef/browser/chrome/chrome_browser_host_impl.cc
+@@ -6,6 +6,7 @@
+ 
+ #include "base/logging.h"
+ #include "base/notimplemented.h"
++#include "base/strings/string_util.h"
+ #include "cef/libcef/browser/browser_platform_delegate.h"
+ #include "cef/libcef/browser/chrome/browser_platform_delegate_chrome.h"
+ #include "cef/libcef/browser/chrome/browser_util.h"
+@@ -13,6 +14,7 @@
+ #include "cef/libcef/browser/chrome/views/chrome_browser_widget.h"
+ #include "cef/libcef/browser/thread_util.h"
+ #include "cef/libcef/browser/views/browser_view_impl.h"
++#include "cef/libcef/common/net/scheme_registration.h"
+ #include "cef/libcef/common/net/url_util.h"
+ #include "chrome/browser/profiles/profile.h"
+ #include "chrome/browser/ui/browser_commands.h"
+@@ -360,7 +362,16 @@
+ 
+   if (browser_) {
+     GURL gurl = params.url;
+-    if (!url_util::FixupGURL(gurl)) {
++    // The embedder already disambiguates registered protocols from host:port.
++    // Preserve an explicit numeric opaque payload (app:42), which omnibox
++    // fixup would otherwise reinterpret as HTTP. Chrome's external protocol
++    // consent, denied-scheme and sandbox checks still run on the original URL.
++    const bool explicit_numeric_protocol =
++        gurl.is_valid() && !gurl.IsStandard() && gurl.scheme().size() > 1 &&
++        !scheme::IsInternalHandledScheme(gurl.scheme()) &&
++        !gurl.SchemeIs("view-source") && !gurl.path().empty() &&
++        base::IsAsciiDigit(gurl.path().front());
++    if (!explicit_numeric_protocol && !url_util::FixupGURL(gurl)) {
+       return false;
+     }
+ 

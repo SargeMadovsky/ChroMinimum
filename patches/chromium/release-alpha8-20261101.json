@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "base_recipe": "platform-codecs-154-win64.json",
+  "additional_patches_in_order": [
+    {
+      "patch": "0012-cef-native-external-protocols.patch",
+      "sha256": "1228acffcfc445f3249a7515b8dca9beabe0f128d9f073b30a1cd78a4899c0d4"
+    },
+    {
+      "patch": "0013-cef-explicit-numeric-protocol.patch",
+      "sha256": "03c47a248683c583a89af030bf5882a2d37cc75e72290740a0c3fe42173be6f3"
+    },
+    {
+      "patch": "0005-download-bubble-anchor.patch",
+      "sha256": "653bd68a406c3a23b40dba94f1139590e7c97452efc8072d47b3740380927803"
+    },
+    {
+      "patch": "0014-download-progress-ring.patch",
+      "sha256": "7d2bcb141b529dcd45c17eb229294554a8f987d066470d7eaa165d27863e09ac"
+    },
+    {
+      "patch": "0015-download-history-current-tab.patch",
+      "sha256": "347fc16c55326187bdf8e248a2e0cd99f6b3ab04fd52abb3783f07dbb9e43983"
+    }
+  ],
+  "shell_cargo_features": [
+    "windows-platform-codecs"
+  ],
+  "core_build_helper": "scripts/build-download-bubble-core.py --progress-ring --single-page-downloads",
+  "resources_branding_policy": "downloads-branding-154.json",
+  "resources_branding_script": "scripts/brand-downloads-resources.py",
+  "runtime_manifest": "dist/ChroMinimum-release-candidate-20261101/runtime-manifest.json",
+  "limitations": [
+    "No bit-identical clean full rebuild claimed",
+    "The base protocol core and object/link identities are recorded by the isolated build helper",
+    "Source materials are not a patent or distribution clearance"
+  ]
+}

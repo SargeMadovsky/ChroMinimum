@@ -1,0 +1,12 @@
+{
+  "chromium": "154.0.8037.98",
+  "cef_revision": "14c5a08",
+  "purpose": "Native Chrome external protocol consent for trusted CEF TYPED address navigation and redirects; reject expired renderer LINK initiators",
+  "files": {
+    "cef/libcef/browser/chrome/chrome_content_browser_client_cef.cc": {
+      "before_sha256": "b28edbd83120eb6bfea454db3ed8c8a2d503d3f70a93cf886889185a6b51e3f1",
+      "after_sha256": "82d0ec682ace23f748eae2c1d39a42bec3299dc114d587792b1af1eba11ecabc"
+    }
+  },
+  "runtime_validated": false
+}

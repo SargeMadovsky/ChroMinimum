@@ -1,0 +1,18 @@
+{
+  "chromium_commit": "b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+  "files": {
+    "media/ffmpeg/ffmpeg_common.cc": {
+      "before_sha256": "1fe385ff9b6852ab03c30a62d5aa7b8ae8192a08049726a9f2796adda0d1932f",
+      "after_sha256": "d6724e752dc4467d6393bed41bdadc52176f16e336137ea3ef3d7609ddfdaa48"
+    }
+  },
+  "scope": "Windows proprietary AAC demux-only unknown sample format fallback; preserve known formats and other codecs",
+  "compiled": true,
+  "runtime_validated": true,
+  "cost": "One C++ source plus dependent archive/DLL relink; no full CEF rebuild intended",
+  "dll_sha256": "4047c4a120d42eca2dd08bfa239506ec38d18b5d376a5f21bc2368a7a9b38f31",
+  "runtime_selection_validated": true,
+  "runtime_limitation": "AAC WebAudio unsupported; WebRTC H264 disabled; long playback and seek not separately accepted",
+  "runtime_validation_scope": "Visible unmuted MP4 AAC/H264 and WebM EOF, exact hdrezka MSE replay >1s, Medium/restricted/AppContainer tokens and clean exits",
+  "runtime_report": "docs/reports/platform-mp4-aac-fix-20261027/summary.json"
+}

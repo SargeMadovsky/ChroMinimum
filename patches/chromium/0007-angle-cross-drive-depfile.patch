@@ -1,0 +1,28 @@
+--- a/third_party/angle/src/commit_id.py
++++ b/third_party/angle/src/commit_id.py
+@@ -104,6 +104,16 @@
+     return ret
+ 
+ 
++def depfile_path(path):
++    # Git worktree metadata may live on a different Windows drive.
++    try:
++        value = os.path.relpath(path)
++    except ValueError:
++        value = os.path.abspath(path)
++    return (value.replace('\\', '/').replace('$', '$$')
++            .replace(' ', '\\ ').replace('#', '\\#').replace(':', '\\:'))
++
++
+ def main():
+     if len(sys.argv) < 2:
+         sys.exit(usage)
+@@ -169,7 +179,7 @@
+         with open(depfile, 'w') as f:
+             f.write(output_file)
+             f.write(': ')
+-            f.write(' '.join(os.path.relpath(p) for p in inputs))
++            f.write(' '.join(depfile_path(p) for p in inputs))
+             f.write('\n')
+ 
+ 

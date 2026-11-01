@@ -1,0 +1,78 @@
+--- a/build/toolchain/win/midl.py
++++ b/build/toolchain/win/midl.py
+@@ -5,6 +5,7 @@
+ from __future__ import division
+ 
+ import array
++import ctypes
+ import difflib
+ import filecmp
+ import io
+@@ -20,6 +21,59 @@
+ import uuid
+ 
+ from functools import reduce
++
++
++def normalize_library_name_hash(contents):
++    # ChroMinimum D032: MIDL on this ru-RU host uses a user-locale hash for
++    # the library name even though the TLB declares en-US. Canonicalize only
++    # that name and rebuild its lookup table; retain the full upstream output
++    # comparison. Format: MSFT header, name hash segment 6, name segment 7.
++    assert contents[:8] == b'MSFT\x02\x00\x01\x00'
++    ntypes = struct.unpack_from('<I', contents, 0x20)[0]
++    segments = 0x54 + 4 * ntypes
++    hash_off, hash_len = struct.unpack_from('<II', contents, segments + 6 * 16)
++    name_off, name_len = struct.unpack_from('<II', contents, segments + 7 * 16)
++    assert hash_len == 512 and hash_off + hash_len <= len(contents)
++    assert name_off + name_len <= len(contents)
++    library = struct.unpack_from('<I', contents, 0x38)[0]
++    assert library + 12 <= name_len
++    length = contents[name_off + library + 8]
++    assert length and library + 12 + length <= name_len
++    name = contents[name_off + library + 12:name_off + library + 12 + length].decode('ascii')
++    syskind = struct.unpack_from('<I', contents, 0x14)[0] & 15
++    lcid = struct.unpack_from('<I', contents, 0x0c)[0]
++    # Load the existing Windows API from System32, never the build directory.
++    dll = ctypes.WinDLL('oleaut32.dll', winmode=0x800)
++    hash_name = dll.LHashValOfNameSys
++    hash_name.argtypes = [ctypes.c_int, ctypes.c_ulong, ctypes.c_wchar_p]
++    hash_name.restype = ctypes.c_ulong
++    canonical = hash_name(syskind, lcid, name) & 0xffff
++    old = struct.unpack_from('<H', contents, name_off + library + 10)[0]
++    if old == canonical:
++        return contents
++    user_lcid = ctypes.WinDLL('kernel32.dll', winmode=0x800).GetUserDefaultLCID()
++    if old != hash_name(syskind, user_lcid, name) & 0xffff:
++        raise ValueError('TLB library hash is not the observed user-locale variant')
++    result = bytearray(contents)
++    struct.pack_into('<H', result, name_off + library + 10, canonical)
++    heads = [0xffffffff] * 128
++    offset = 0
++    found_library = False
++    while offset < name_len:
++        assert offset + 12 <= name_len
++        length = result[name_off + offset + 8]
++        next_offset = offset + 12 + ((length + 3) & ~3)
++        assert length and next_offset <= name_len
++        found_library |= offset == library
++        value = struct.unpack_from('<H', result, name_off + offset + 10)[0]
++        bucket = value % 128
++        struct.pack_into('<I', result, name_off + offset + 4, heads[bucket])
++        heads[bucket] = offset
++        offset = next_offset
++    assert found_library
++    for bucket, head in enumerate(heads):
++        struct.pack_into('<I', result, hash_off + 4 * bucket, head)
++    return bytes(result)
+ 
+ 
+ def ZapTimestamp(filename):
+@@ -83,6 +137,7 @@
+             b'\x13\x00\xff\xff\xff\x7f\x57\x57\x13\x00\x6e\x02\x01\x08\x57\x57'
+             + contents[custom_off + 0x54 :]
+         )
++        contents = normalize_library_name_hash(contents)
+     else:
+         contents = re.sub(
+             rb'File created by MIDL compiler version 8\.\d\d\.\d{4} \*/\r\n'

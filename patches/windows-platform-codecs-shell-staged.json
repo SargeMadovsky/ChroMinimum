@@ -1,0 +1,54 @@
+{
+  "status": "applied_to_integrated_candidate_20261101",
+  "scope": "Explicit Windows build variant enables platform AAC without test environment; no dependencies or background services added",
+  "before_sha256": {
+    "Cargo.toml": "99677f70a9dd822166c62ee70ee2d2935b370d157fb259cdfcca14bd615c7e16",
+    "src/lib.rs": "9c7c65c7ae697b69a172c72a382a6002dcab1372f106b36e601672d0b670dbec"
+  },
+  "full_shell_compiled": true,
+  "runtime_validated": true,
+  "awaiting": "Manual acceptance, full installer and installed-launcher check",
+  "policy_tests": {
+    "passed": true,
+    "standalone_cases": 3,
+    "combined_network_policy_cases": 8
+  },
+  "shared_source_matches_staging_snapshot": false,
+  "cef_sparse_merge": {
+    "status": "sparse_external_protocol_patch_merge_passed",
+    "compiled": false,
+    "runtime_validated": false,
+    "codec_file_overlap": false,
+    "patches": [
+      {
+        "name": "0012-cef-native-external-protocols",
+        "sha256": "1228acffcfc445f3249a7515b8dca9beabe0f128d9f073b30a1cd78a4899c0d4"
+      },
+      {
+        "name": "0013-cef-explicit-numeric-protocol",
+        "sha256": "03c47a248683c583a89af030bf5882a2d37cc75e72290740a0c3fe42173be6f3"
+      }
+    ]
+  },
+  "updater_media_contract_tests": {
+    "passed": true,
+    "passed_cases": 2,
+    "ignored_cases": 1,
+    "ignored_scope": "Real media archive install/trial requires a final package; not executed",
+    "snapshot": "updater-snapshot/SOURCE-SNAPSHOT.json",
+    "production_private_key_used": false,
+    "network_used": false
+  },
+  "combined_core_probe": {
+    "core_sha256": "5cce388edadec6c838592923be7f31caacbfbce354451c36c33020d7c563b61a",
+    "frozen_adapter": true,
+    "production_policy_patch_applied": false,
+    "result": "not_validated",
+    "attempts": [
+      "Tool containment: network_sandbox_refused before playback",
+      "Normal desktop: document readiness passed, visible-page precondition failed"
+    ],
+    "next": "Wait for downloads work and run integrated candidate without conflicting UI tests"
+  },
+  "integration_report": "docs/reports/platform-integrated-20261101/summary.json"
+}

@@ -19,7 +19,14 @@ fn main() {
                 "--sign",
                 "--verify",
                 "--inspect",
+                "--components-plan",
+                "--catalog-plan",
+                "--stage-components",
+                "--prepare-components",
+                "--fetch-components",
                 "--smoke-test",
+                "--installer-preflight",
+                "--migrate-installation",
             ]
             .contains(&a.as_str())
         }) {
@@ -40,6 +47,105 @@ fn main() {
 
 fn run() -> Result<()> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--installer-preflight") {
+        if args.len() != 3 {
+            return Err("Usage: --installer-preflight <root> <new-seed-policy>".into());
+        }
+        return installer_seed::preflight(Path::new(&args[1]), Path::new(&args[2]));
+    }
+    if args.first().map(String::as_str) == Some("--migrate-installation") {
+        if args.len() != 2 {
+            return Err("Usage: --migrate-installation <root>".into());
+        }
+        return installer_seed::migrate(Path::new(&args[1]));
+    }
+    if matches!(
+        args.first().map(String::as_str),
+        Some("--prepare-components" | "--fetch-components")
+    ) {
+        if args.len() != 5 {
+            return Err(
+                "Usage: --prepare-components|--fetch-components <root> <config> <signed-catalog> <archives-or-new-cache>".into(),
+            );
+        }
+        let config = components::InstallConfig::read(Path::new(&args[2]))?;
+        let mut bytes = Vec::new();
+        fs::File::open(&args[3])?
+            .take(catalog::MAX_CATALOG + 1)
+            .read_to_end(&mut bytes)?;
+        let key = unhex::<32>(include_str!("../public-key.hex").trim())?;
+        let id = if args[0] == "--fetch-components" {
+            component_install::download_and_prepare(
+                Path::new(&args[1]),
+                &bytes,
+                &config,
+                Path::new(&args[4]),
+                &key,
+            )?
+        } else {
+            component_install::prepare(
+                Path::new(&args[1]),
+                &bytes,
+                &config,
+                Path::new(&args[4]),
+                &key,
+                now()?,
+            )?
+        };
+        println!("{id}");
+        return Ok(());
+    }
+    if args.first().map(String::as_str) == Some("--launch-components") {
+        let root = std::path::absolute(args.get(1).ok_or("Installation root required")?)?;
+        let key = unhex::<32>(include_str!("../public-key.hex").trim())?;
+        return launch_components(&root, &args[2..], &key);
+    }
+    if args.first().map(String::as_str) == Some("--stage-components") {
+        if args.len() != 7 {
+            return Err("Usage: --stage-components <config> <signed-catalog> <archives> <new-output> <highest> <min-safe>".into());
+        }
+        let config = components::InstallConfig::read(Path::new(&args[1]))?;
+        let key = unhex::<32>(include_str!("../public-key.hex").trim())?;
+        let verified = catalog::read_verified(
+            Path::new(&args[2]),
+            &key,
+            now()?,
+            args[5].parse()?,
+            args[6].parse()?,
+        )?;
+        let report = verified.stage_local(&config, Path::new(&args[3]), Path::new(&args[4]))?;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        return Ok(());
+    }
+    if args.first().map(String::as_str) == Some("--catalog-plan") {
+        if args.len() != 5 {
+            return Err(
+                "Usage: --catalog-plan <config> <signed-catalog> <highest> <min-safe>".into(),
+            );
+        }
+        let config = components::InstallConfig::read(Path::new(&args[1]))?;
+        let key = unhex::<32>(include_str!("../public-key.hex").trim())?;
+        let verified = catalog::read_verified(
+            Path::new(&args[2]),
+            &key,
+            now()?,
+            args[3].parse()?,
+            args[4].parse()?,
+        )?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&verified.plan(&config)?)?
+        );
+        return Ok(());
+    }
+    if args.first().map(String::as_str) == Some("--components-plan") {
+        if args.len() != 2 {
+            return Err("Usage: --components-plan <installation-config.json>".into());
+        }
+        let config = components::InstallConfig::read(Path::new(&args[1]))?;
+        println!("{}", serde_json::to_string_pretty(&config.plan()?)?);
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("--keygen") {
         use ring::signature::KeyPair;
         let path = Path::new(args.get(1).ok_or("Private key path required")?);
@@ -97,6 +203,21 @@ fn run() -> Result<()> {
     if args.first().map(String::as_str) == Some("--check") {
         return check(root, &key);
     }
+    let browser_args = open_target::browser_args(&args)?;
+    let installation = root.join("installation.json");
+    let installed_config = if installation.exists() {
+        Some(components::InstallConfig::read(&installation)?)
+    } else {
+        None
+    };
+    let default_data = if installed_config.is_some() {
+        std::env::var_os("LOCALAPPDATA")
+            .map(std::path::PathBuf::from)
+            .ok_or("LOCALAPPDATA is required for an installed browser")?
+            .join("ChroMinimum")
+    } else {
+        root.to_owned()
+    };
     let guard = lock(root)?;
     let selected = select_locked(root, &key)?;
     let runtime = version_dir(root, selected);
@@ -108,16 +229,28 @@ fn run() -> Result<()> {
     let started = root.join(format!("core-started-{}", hex(&nonce)));
     let mut command = Command::new(runtime.join("chrominimum.exe"));
     command
-        .args(&args)
+        .args(&browser_args)
         .current_dir(&runtime)
         .env(
             "CHROMINIMUM_DATA_DIR",
-            std::env::var_os("CHROMINIMUM_DATA_DIR").unwrap_or_else(|| root.as_os_str().to_owned()),
+            std::env::var_os("CHROMINIMUM_DATA_DIR")
+                .unwrap_or_else(|| default_data.into_os_string()),
         )
         .env("CHROMINIMUM_LAUNCHER", &exe)
         .env("CHROMINIMUM_CORE_ROOT", root)
         .env("CHROMINIMUM_STARTED", &started)
         .env("CHROMINIMUM_CORE_SEQUENCE", selected.to_string());
+    if let Some(config) = installed_config {
+        command.env(
+            "CHROMINIMUM_INSTALL_LOCALE",
+            match config.ui_locale {
+                components::Locale::EnUs => "en-US",
+                components::Locale::Ru => "ru",
+            },
+        );
+    } else {
+        command.env_remove("CHROMINIMUM_INSTALL_LOCALE");
+    }
     // No idle launcher process. Only a bounded smoke test waits for its child.
     if args.iter().any(|a| a == "--smoke-test") && !args.iter().any(|a| a == "--launcher-no-wait") {
         let status = command.status()?;
@@ -141,6 +274,67 @@ fn run() -> Result<()> {
     Ok(())
 }
 
+fn launch_components(root: &Path, args: &[String], key: &[u8; 32]) -> Result<()> {
+    let (selection, lease, runtime) = component_install::select_for_launch(root, key)?;
+    let mut random = [0; 16];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut random)
+        .map_err(|_| "Random source unavailable")?;
+    let ready = hex(&random);
+    let locale = match selection.ui_locale {
+        components::Locale::EnUs => "en-US",
+        components::Locale::Ru => "ru",
+    };
+    let mut child = Command::new(runtime.join("chrominimum.exe"))
+        .args(args)
+        .current_dir(&runtime)
+        .env(
+            "CHROMINIMUM_DATA_DIR",
+            std::env::var_os("CHROMINIMUM_DATA_DIR").unwrap_or_else(|| root.as_os_str().to_owned()),
+        )
+        .env("CHROMINIMUM_LAUNCHER", std::env::current_exe()?)
+        .env("CHROMINIMUM_CORE_ROOT", root)
+        .env("CHROMINIMUM_COMPONENT_ID", &selection.id)
+        .env("CHROMINIMUM_COMPONENT_LOCALE", locale)
+        .env("CHROMINIMUM_COMPONENT_READY", &ready)
+        .env_remove("CHROMINIMUM_CORE_SEQUENCE")
+        .env_remove("CHROMINIMUM_STARTED")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("Component readiness pipe unavailable")?;
+    let expected = format!("component-ready {} {ready}", selection.id);
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+        let found = BufReader::new(stdout.take(8192))
+            .lines()
+            .any(|line| line.is_ok_and(|s| s == expected));
+        let _ = sender.send(found);
+    });
+    if !receiver
+        .recv_timeout(Duration::from_secs(60))
+        .unwrap_or(false)
+    {
+        return Err("Component browser did not confirm page readiness".into());
+    }
+    if let Some(token) = selection.trial_token {
+        component_install::confirm(root, &selection.id, &token, key)?;
+    }
+    // The browser acquired its own runtime lease before it reported readiness.
+    drop(lease);
+    if args.iter().any(|a| a == "--smoke-test") {
+        let status = child.wait()?;
+        if !status.success() {
+            return Err("Component browser smoke failed".into());
+        }
+    }
+    Ok(())
+}
+
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .https_only(true)
@@ -153,10 +347,15 @@ fn agent() -> ureq::Agent {
 
 fn check(root: &Path, key: &[u8; 32]) -> Result<()> {
     println!("checking");
+    let state = {
+        let _guard = lock(root)?;
+        read_state(root)?
+    };
+    let channel = update_channel(root, &state)?;
     let agent = agent();
     let mut bytes = Vec::new();
     agent
-        .get(CHANNEL)
+        .get(channel)
         .call()?
         .into_body()
         .into_reader()
@@ -167,6 +366,7 @@ fn check(root: &Path, key: &[u8; 32]) -> Result<()> {
         read_state(root)?
     };
     let manifest = verify(&bytes, key, now()?, state.highest)?;
+    require_compatible_media(root, &state, &manifest)?;
     if manifest.sequence <= state.highest || state.pending.is_some() {
         println!(
             "{}",

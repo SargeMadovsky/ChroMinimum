@@ -1,0 +1,16 @@
+{
+  "chromium_commit": "b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+  "files": {
+    "media/BUILD.gn": {
+      "before_sha256": "a987a016ae1bcabee6c24a87202dba8ef0a15388ce88213df660b4f20cd9199e",
+      "after_sha256": "ee0bbbf8de94d7a4d908147f318c6989caef20e0d5adb732e76bd2552d310f59"
+    }
+  },
+  "scope": "Default-off guarded Windows-only GN compatibility exception; requires system AAC patches 0004/0005",
+  "applied_to_live_source": false,
+  "full_graph_validated": true,
+  "isolated_GN_policy_validated": true,
+  "isolated_GN_cases": 8,
+  "full_graph_evidence": "docs/reports/platform-codecs-full-graph-20261026/summary.json",
+  "applied_to_isolated_source": "E:/cm-platform154/chromium/src"
+}

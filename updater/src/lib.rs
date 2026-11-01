@@ -1,4 +1,11 @@
 //! Signed, bounded, side-by-side core installation. No CEF dependency.
+pub mod catalog;
+pub mod component_install;
+pub mod components;
+pub mod download;
+pub mod installer_seed;
+pub mod open_target;
+pub mod packages;
 use ring::{digest, signature};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -10,6 +17,7 @@ use std::{
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 pub const CHANNEL: &str = "https://github.com/SargeMadovsky/ChroMinimum/releases/download/core-windows-x64/core-update.json";
+pub const MEDIA_CHANNEL: &str = "https://github.com/SargeMadovsky/ChroMinimum/releases/download/core-media-windows-x64/core-update.json";
 pub const MAX_MANIFEST: u64 = 16 * 1024;
 const MAX_PACKAGE: u64 = 512 * 1024 * 1024;
 const MAX_EXPANDED: u64 = 2 * 1024 * 1024 * 1024;
@@ -24,6 +32,8 @@ pub struct Manifest {
     pub launcher_api: u32,
     pub shell_version: String,
     pub engine_version: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub media_codecs: bool,
     pub issued: u64,
     pub expires: u64,
     pub url: String,
@@ -46,10 +56,31 @@ pub struct State {
     pub attempted: bool,
     pub highest: u64,
     pub min_safe: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_policy_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub media_codecs_required: bool,
 }
 
 pub fn now() -> Result<u64> {
     Ok(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())
+}
+
+/// Capability is authenticated by the signed manifest and the full installer.
+/// It is a release assertion, not a substitute for testing the packaged runtime.
+pub fn require_compatible_media(root: &Path, state: &State, manifest: &Manifest) -> Result<()> {
+    if installer_seed::requires_media(root, state)? && !manifest.media_codecs {
+        return Err("Core lacks the H.264/AAC capability required by this installation".into());
+    }
+    Ok(())
+}
+
+pub fn update_channel(root: &Path, state: &State) -> Result<&'static str> {
+    Ok(if installer_seed::requires_media(root, state)? {
+        MEDIA_CHANNEL
+    } else {
+        CHANNEL
+    })
 }
 pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
@@ -248,6 +279,31 @@ pub fn hash_file(path: &Path) -> Result<(u64, String)> {
     hash_reader(File::open(path)?)
 }
 
+/// Engine updates cannot replace the adapter installed by the full installer.
+/// The seed is the local trust anchor; this does not defend against an attacker
+/// who can replace the launcher and seed in the user's installation directory.
+fn verify_adapter(root: &Path, runtime: &Path) -> Result<()> {
+    fn adapter(path: &Path) -> Result<(u64, String)> {
+        let file = File::open(path.join("chrominimum.dll"))?;
+        let size = file.metadata()?.len();
+        if size == 0 || size > 16 * 1024 * 1024 {
+            return Err("Adapter size out of range".into());
+        }
+        let result = hash_reader(file.take(16 * 1024 * 1024 + 1))?;
+        if result.0 != size {
+            return Err("Adapter changed during verification".into());
+        }
+        Ok(result)
+    }
+    if adapter(&version_dir(root, 0))? != adapter(runtime)? {
+        return Err(
+            "Core adapter differs from installer seed; a compatible full installer is required"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 fn hash_reader(mut input: impl Read) -> Result<(u64, String)> {
     let mut hash = digest::Context::new(&digest::SHA256);
     let mut buffer = [0_u8; 64 * 1024];
@@ -318,6 +374,7 @@ pub fn install(
     let _lock = lock(root)?;
     let mut state = read_state(root)?;
     let m = verify(envelope, key, timestamp, state.highest)?;
+    require_compatible_media(root, &state, &m)?;
     if m.sequence <= state.highest {
         return Err("This sequence was already seen".into());
     }
@@ -333,12 +390,14 @@ pub fn install(
     if destination.exists() {
         // Recover a crash after directory publication but before state commit.
         verify_existing(package, &destination, envelope)?;
+        verify_adapter(root, &destination)?;
     } else {
         let mut nonce = [0; 16];
         ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut nonce)
             .map_err(|_| "Random source unavailable")?;
         let staging = core.join(format!("staging-{}-{}", m.sequence, hex(&nonce)));
-        if let Err(error) = unpack(package, &staging) {
+        if let Err(error) = unpack(package, &staging).and_then(|()| verify_adapter(root, &staging))
+        {
             // Only our newly created, resolved direct child can be removed.
             if staging
                 .canonicalize()
@@ -373,6 +432,8 @@ pub fn select(root: &Path, key: &[u8; 32]) -> Result<u64> {
 /// Caller holds the installation lock through selection and lease acquisition.
 pub fn select_locked(root: &Path, key: &[u8; 32]) -> Result<u64> {
     let mut state = read_state(root)?;
+    let had_pending = state.pending.is_some();
+    let mut clear_health = false;
     if let Some(candidate) = state.pending {
         let receipt = fs::read(version_dir(root, candidate).join("core-update.json"))?;
         // Installed receipt authenticates identity. Expiry governs new downloads,
@@ -380,6 +441,7 @@ pub fn select_locked(root: &Path, key: &[u8; 32]) -> Result<u64> {
         let env: Envelope = serde_json::from_slice(&receipt)?;
         let parsed: Manifest = serde_json::from_str(&env.payload)?;
         let verified = verify(&receipt, key, parsed.issued, state.highest)?;
+        require_compatible_media(root, &state, &verified)?;
         if verified.sequence != candidate {
             return Err("Installed identity mismatch".into());
         }
@@ -391,27 +453,36 @@ pub fn select_locked(root: &Path, key: &[u8; 32]) -> Result<u64> {
                 state.pending = None;
             } else {
                 state.pending = None;
-                if state.active < state.min_safe {
+                if installer_seed::effective_sequence(root, &state, state.active)? < state.min_safe
+                {
                     return Err("New core failed; fallback is below the security floor".into());
                 }
             }
         } else {
-            let _ = fs::remove_file(root.join("core-health"));
+            clear_health = true;
             state.attempted = true;
         }
-        save_state(root, &state)?;
     }
     let selected = state.pending.unwrap_or(state.active);
-    if selected < state.min_safe {
+    if installer_seed::effective_sequence(root, &state, selected)? < state.min_safe {
         return Err("Installed core is below the security floor".into());
     }
     if selected > 0 {
         let bytes = fs::read(version_dir(root, selected).join("core-update.json"))?;
         let envelope: Envelope = serde_json::from_slice(&bytes)?;
         let m: Manifest = serde_json::from_str(&envelope.payload)?;
-        if verify(&bytes, key, m.issued, 0)?.sequence != selected {
+        let verified = verify(&bytes, key, m.issued, 0)?;
+        require_compatible_media(root, &state, &verified)?;
+        if verified.sequence != selected {
             return Err("Active core identity mismatch".into());
         }
+        verify_adapter(root, &version_dir(root, selected))?;
+    }
+    if had_pending {
+        if clear_health {
+            let _ = fs::remove_file(root.join("core-health"));
+        }
+        save_state(root, &state)?;
     }
     Ok(selected)
 }

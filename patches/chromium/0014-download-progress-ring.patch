@@ -1,0 +1,88 @@
+--- a/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
++++ b/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
+@@ -135,15 +135,16 @@
+ 
+   // Create a DownloadProgressRing and adds it to |parent|. The
+   // returned progress ring is owned by the |parent|.
+-  static DownloadProgressRing* Install(ToolbarButton* parent) {
++  static DownloadProgressRing* Install(views::View* parent) {
+     auto progress_ring =
+         base::WrapUnique<DownloadProgressRing>(new DownloadProgressRing());
+     auto* ring = parent->AddChildView(std::move(progress_ring));
++    ring->SetBoundsRect(parent->GetLocalBounds());
+     return ring;
+   }
+ 
+   // Returns the progress ring if it is a direct child of the `parent`.
+-  static DownloadProgressRing* GetProgressRing(ToolbarButton* parent) {
++  static DownloadProgressRing* GetProgressRing(views::View* parent) {
+     for (auto& child : parent->children()) {
+       if (views::IsViewClass<DownloadProgressRing>(child)) {
+         return views::AsViewClass<DownloadProgressRing>(child);
+@@ -211,6 +212,13 @@
+     // Do not show the progress ring when there is no in progress download.
+     if (status_ == DownloadStatus::kIdle) {
+       return;
++    }
++
++    if (parent()->GetID() == kChroMinimumDownloadAnchorViewId &&
++        IsChroMinimumDownloadProbe()) {
++      LOG(INFO) << "CM_DOWNLOAD_RING_PAINT state=" << static_cast<int>(status_)
++                << " percent=" << download_progress_percentage_
++                << " width=" << width() << " height=" << height();
+     }
+ 
+     int ring_radius = ui::TouchUiController::Get()->touch_ui()
+@@ -262,7 +270,10 @@
+ END_METADATA
+ 
+ DownloadProgressRing* GetProgressRing(BrowserView* browser_view) {
+-  auto* button = GetDownloadsButton(browser_view);
++  views::View* button = GetChroMinimumDownloadAnchor(browser_view);
++  if (!button) {
++    button = GetDownloadsButton(browser_view);
++  }
+   if (!button) {
+     return nullptr;
+   }
+@@ -680,6 +691,40 @@
+ }
+ 
+ void DownloadToolbarUIController::UpdateIcon() {
++  // The CEF toolbar has its own button; reuse the native progress renderer
++  // and event-driven controller state, without touching the complete bubble.
++  if (auto* anchor = GetChroMinimumDownloadAnchor(browser_view_)) {
++    auto* ring = GetProgressRing(browser_view_);
++    ring->SetBoundsRect(anchor->GetLocalBounds());
++    redraw_progress_soon_ = false;
++    if (state_ == IconState::kComplete || progress_info_.download_count == 0) {
++      ring->SetIdle();
++    } else {
++      auto* colors = anchor->GetColorProvider();
++      const bool active = active_ == IconActive::kActive;
++      const SkColor disabled = colors->GetColor(kColorToolbarButtonIconInactive);
++      ring->UpdateColors(
++          is_dormant_ ? disabled
++                      : colors->GetColor(kColorDownloadToolbarButtonRingBackground),
++          is_dormant_ ? disabled
++                      : colors->GetColor(active ? kColorDownloadToolbarButtonActive
++                                                : kColorDownloadToolbarButtonInactive));
++      if (is_dormant_) {
++        ring->SetDormant();
++      } else if (ShouldShowScanningAnimation()) {
++        ring->SetScanning();
++      } else {
++        ring->SetDownloading(progress_info_.progress_percentage);
++      }
++    }
++    if (IsChroMinimumDownloadProbe()) {
++      LOG(INFO) << "CM_DOWNLOAD_RING state=" << static_cast<int>(ring->GetStatus())
++                << " count=" << progress_info_.download_count
++                << " percent=" << progress_info_.progress_percentage
++                << " drawn=" << ring->IsDrawn();
++    }
++    return;
++  }
+   auto* button = GetDownloadsButton(browser_view_);
+   if (!button) {
+     return;

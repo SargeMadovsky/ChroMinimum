@@ -1,0 +1,23 @@
+--- a/cef/libcef/browser/chrome/chrome_content_browser_client_cef.cc
++++ b/cef/libcef/browser/chrome/chrome_content_browser_client_cef.cc
+@@ -151,7 +151,19 @@
+   // has committed in the same RenderFrameHost.
+   auto initiator_rfh = initiator_document.AsRenderFrameHostIfValid();
+   if (!initiator_rfh) {
+-    return;
++    // Renderer BeginNavigation rejects non-webby transitions, and OpenURL
++    // supplies LINK in Navigator::RequestOpenURL. TYPED therefore identifies
++    // trusted browser navigation, including redirects with an opaque origin
++    // or a discarded speculative document. Keep expired renderer links blocked
++    // and let Chrome apply its normal consent, sandbox and handler policy.
++    const bool explicit_browser_navigation =
++        is_primary_main_frame && !is_in_fenced_frame_tree &&
++        ui::PageTransitionCoreTypeIs(
++            static_cast<ui::PageTransition>(resource_request.transition_type),
++            ui::PAGE_TRANSITION_TYPED);
++    if (!explicit_browser_navigation) {
++      return;
++    }
+   }
+ 
+   // Match the logic of the original call in

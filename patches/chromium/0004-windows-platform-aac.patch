@@ -1,0 +1,111 @@
+--- a/media/filters/win/media_foundation_audio_decoder.cc
++++ b/media/filters/win/media_foundation_audio_decoder.cc
+@@ -101,8 +101,11 @@
+ #endif
+ #if BUILDFLAG(USE_PROPRIETARY_CODECS)
+     case AudioCodec::kAAC:
+-      if (config.profile() == AudioCodecProfile::kXHE_AAC &&
+-          base::win::GetVersion() >= base::win::Version::WIN11_22H2) {
++      // AAC-LC/HE-AAC use kUnknown; Windows MFT validates the actual ASC.
++      // Keep the existing xHE-AAC OS restriction unchanged.
++      if (config.profile() == AudioCodecProfile::kUnknown ||
++          (config.profile() == AudioCodecProfile::kXHE_AAC &&
++           base::win::GetVersion() >= base::win::Version::WIN11_22H2)) {
+         return MFT_REGISTER_TYPE_INFO{MFMediaType_Audio, MFAudioFormat_AAC};
+       }
+       [[fallthrough]];
+--- a/media/mojo/services/gpu_mojo_media_client_win.cc
++++ b/media/mojo/services/gpu_mojo_media_client_win.cc
+@@ -6,8 +6,10 @@
+ 
+ #include <d3d11.h>
+ #include <d3d12.h>
++#include <mfapi.h>
+ #include <wrl.h>
+ 
++#include "base/compiler_specific.h"
+ #include "base/files/file_util.h"
+ #include "base/path_service.h"
+ #include "base/task/sequenced_task_runner.h"
+@@ -101,10 +103,34 @@
+     }
+ #endif  // BUILDFLAG (ENABLE_PLATFORM_AC3_EAC3_AUDIO)
+ 
+-    if (base::win::GetVersion() >= base::win::Version::WIN11_22H2 &&
+-        InitializeMediaFoundation()) {
+-      audio_configs.emplace_back(AudioCodec::kAAC, AudioCodecProfile::kXHE_AAC);
+-    }
++#if BUILDFLAG(USE_PROPRIETARY_CODECS)
++    if (InitializeMediaFoundation()) {
++      // Probe decoder availability: Windows N may not include the AAC MFT.
++      MFT_REGISTER_TYPE_INFO aac_type = {MFMediaType_Audio, MFAudioFormat_AAC};
++      IMFActivate** activations = nullptr;
++      UINT32 count = 0;
++      const HRESULT hr = MFTEnumEx(
++          MFT_CATEGORY_AUDIO_DECODER,
++          MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_LOCALMFT |
++              MFT_ENUM_FLAG_SORTANDFILTER,
++          &aac_type, nullptr, &activations, &count);
++      if (SUCCEEDED(hr)) {
++        if (count > 0) {
++          audio_configs.emplace_back(AudioCodec::kAAC,
++                                     AudioCodecProfile::kUnknown);
++          if (base::win::GetVersion() >= base::win::Version::WIN11_22H2) {
++            audio_configs.emplace_back(AudioCodec::kAAC,
++                                       AudioCodecProfile::kXHE_AAC);
++          }
++        }
++        for (UINT32 index = 0; index < count; ++index) {
++          // SAFETY: MFTEnumEx returns an array of count IMFActivate pointers.
++          UNSAFE_TODO(activations[index])->Release();
++        }
++      }
++      CoTaskMemFree(activations);
++    }
++#endif  // BUILDFLAG(USE_PROPRIETARY_CODECS)
+ 
+     return audio_configs;
+   }
+--- a/media/renderers/default_decoder_factory.cc
++++ b/media/renderers/default_decoder_factory.cc
+@@ -55,6 +55,13 @@
+ 
+ namespace media {
+ 
++#if BUILDFLAG(IS_WIN)
++namespace {
++// Experimental: prefer the existing sandboxed platform path; retain fallback.
++BASE_FEATURE(kChroMinimumPlatformAudioFirst, base::FEATURE_DISABLED_BY_DEFAULT);
++}  // namespace
++#endif
++
+ DefaultDecoderFactory::DefaultDecoderFactory(
+     std::unique_ptr<DecoderFactory> external_decoder_factory)
+     : external_decoder_factory_(std::move(external_decoder_factory)) {}
+@@ -104,12 +111,25 @@
+     audio_decoders->push_back(std::make_unique<OpusAudioDecoder>(task_runner));
+   }
+ 
++#if BUILDFLAG(IS_WIN)
++  const bool platform_audio_first =
++      base::FeatureList::IsEnabled(kChroMinimumPlatformAudioFirst);
++  if (platform_audio_first && external_decoder_factory_) {
++    external_decoder_factory_->CreateAudioDecoders(task_runner, media_log,
++                                                 audio_decoders);
++  }
++#endif
++
+ #if BUILDFLAG(ENABLE_FFMPEG)
+   audio_decoders->push_back(
+       std::make_unique<FFmpegAudioDecoder>(task_runner, media_log));
+ #endif
+ 
+-  if (external_decoder_factory_) {
++  if (external_decoder_factory_
++#if BUILDFLAG(IS_WIN)
++      && !platform_audio_first
++#endif
++  ) {
+     external_decoder_factory_->CreateAudioDecoders(task_runner, media_log,
+                                                    audio_decoders);
+   }

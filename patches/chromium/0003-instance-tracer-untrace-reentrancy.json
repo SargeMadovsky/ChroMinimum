@@ -1,0 +1,8 @@
+{
+  "chromium": "154.0.8037.98",
+  "path": "base/allocator/partition_allocator/src/partition_alloc/pointers/instance_tracer.cc",
+  "before_sha256": "853a73637d8aa9cb5c6c93650ca4eead862426185eb37b51f97d6c8bd2283a67",
+  "after_sha256": "ecd4bf2771329e20ab3e7f9210d2c45c96c4507ffa0e8407d3c7c42863e195d8",
+  "required_enabled_feature": null,
+  "scope": "Extract map node under lock; destroy it after unlocking; keep BRP and instance tracing enabled"
+}

@@ -1,0 +1,332 @@
+--- a/media/filters/audio_file_reader.h
++++ b/media/filters/audio_file_reader.h
+@@ -10,6 +10,8 @@
+ #include <vector>
+ 
+ #include "base/memory/raw_ptr.h"
++#include "base/memory/weak_ptr.h"
++#include "base/functional/callback.h"
+ #include "media/base/media_export.h"
+ #include "media/base/media_util.h"
+ #include "media/ffmpeg/ffmpeg_deleters.h"
+@@ -48,6 +50,15 @@
+   // It returns `true` on success.
+   bool Open();
+   void Close();
++
++  // Experimental async reader. All calls/callbacks stay on one sequenced task
++  // runner. The protocol must outlive the reader, including pending callbacks.
++  // Close cancels pending callbacks asynchronously; destruction is supported.
++  using AsyncReadCB = base::OnceCallback<void(
++      bool, std::vector<std::unique_ptr<AudioBus>>)>;
++  void OpenAsync(std::unique_ptr<AudioDecoder> decoder,
++                 base::OnceCallback<void(bool)> callback);
++  void ReadAsync(AsyncReadCB callback);
+ 
+   // After a call to Open(), attempts to decode up to `packets_to_read` amount
+   // of packets, updating `decoded_audio_packets` with each decoded packet in
+@@ -96,6 +107,12 @@
+  private:
+   bool OpenDemuxer();
+   bool OpenDecoder();
++  bool ReadConfig(AudioDecoderConfig* config);
++  scoped_refptr<DecoderBuffer> MakeDecoderBuffer(const ScopedAVPacket& packet);
++  void OnAsyncOpened(DecoderStatus status);
++  void ReadNextAsyncPacket();
++  void OnAsyncDecoded(bool eos, DecoderStatus status);
++  void FinishAsyncRead(bool success);
+   bool ReadPacket(AVPacket* output_packet);
+   bool DecodePacket(const ScopedAVPacket& packet);
+   void FinalizeDecodedBuffer(scoped_refptr<AudioBuffer> buffer,
+@@ -140,6 +157,11 @@
+   // Temporary pointer to the vector of audio buses for the current Read() call.
+   raw_ptr<std::vector<std::unique_ptr<AudioBus>>> decoded_audio_packets_ =
+       nullptr;
++
++  base::OnceCallback<void(bool)> async_open_cb_;
++  AsyncReadCB async_read_cb_;
++  std::vector<std::unique_ptr<AudioBus>> async_audio_packets_;
++  base::WeakPtrFactory<AudioFileReader> weak_factory_{this};
+ };
+ 
+ }  // namespace media
+--- a/media/filters/audio_file_reader.cc
++++ b/media/filters/audio_file_reader.cc
+@@ -20,6 +20,7 @@
+ #include "base/logging.h"
+ #include "base/numerics/safe_math.h"
+ #include "base/time/time.h"
++#include "base/task/sequenced_task_runner.h"
+ #include "media/base/audio_buffer.h"
+ #include "media/base/audio_bus.h"
+ #include "media/base/audio_sample_types.h"
+@@ -58,19 +59,7 @@
+ 
+ bool AudioFileReader::OpenDecoder() {
+   AudioDecoderConfig config;
+-  if (!AVCodecContextToAudioDecoderConfig(
+-          codec_context_.get(), EncryptionScheme::kUnencrypted, &config)) {
+-    return false;
+-  }
+-
+-  if (!config.IsValidConfig()) {
+-    return false;
+-  }
+-
+-  // Verify the channel layout is supported by Chrome.  Acts as a sanity check
+-  // against invalid files.  See http://crbug.com/171962
+-  if (ChannelLayoutToChromeChannelLayout(codec_context_->ch_layout) ==
+-      CHANNEL_LAYOUT_UNSUPPORTED) {
++  if (!ReadConfig(&config)) {
+     return false;
+   }
+ 
+@@ -119,6 +108,26 @@
+   return initialize_status.value();
+ }
+ 
++bool AudioFileReader::ReadConfig(AudioDecoderConfig* config) {
++  if (!AVCodecContextToAudioDecoderConfig(
++          codec_context_.get(), EncryptionScheme::kUnencrypted, config)) {
++    return false;
++  }
++
++  if (!config->IsValidConfig()) {
++    return false;
++  }
++
++  // Verify the channel layout is supported by Chrome.  Acts as a sanity check
++  // against invalid files.  See http://crbug.com/171962
++  if (ChannelLayoutToChromeChannelLayout(codec_context_->ch_layout) ==
++      CHANNEL_LAYOUT_UNSUPPORTED) {
++    return false;
++  }
++
++  return true;
++}
++
+ bool AudioFileReader::OpenDemuxer() {
+   glue_ = std::make_unique<FFmpegGlue>(protocol_);
+   AVFormatContext* format_context = glue_->format_context();
+@@ -163,6 +172,18 @@
+ }
+ 
+ void AudioFileReader::Close() {
++  weak_factory_.InvalidateWeakPtrs();
++  if (async_open_cb_) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(async_open_cb_), false));
++  }
++  if (async_read_cb_) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(async_read_cb_), false,
++                                 std::vector<std::unique_ptr<AudioBus>>()));
++  }
++  decoded_audio_packets_ = nullptr;
++  async_audio_packets_.clear();
+   decoder_.reset();
+   codec_context_.reset();
+   glue_.reset();
+@@ -425,7 +446,8 @@
+   return false;
+ }
+ 
+-bool AudioFileReader::DecodePacket(const ScopedAVPacket& packet) {
++scoped_refptr<DecoderBuffer> AudioFileReader::MakeDecoderBuffer(
++    const ScopedAVPacket& packet) {
+   auto buffer = DecoderBuffer::CopyFrom(AVPacketData(*packet));
+ 
+   base::TimeDelta stream_timestamp =
+@@ -457,6 +479,11 @@
+   last_packet_duration_ = buffer->duration();
+   last_packet_timestamp_ = buffer->timestamp();
+ 
++  return buffer;
++}
++
++bool AudioFileReader::DecodePacket(const ScopedAVPacket& packet) {
++  auto buffer = MakeDecoderBuffer(packet);
+   std::optional<DecoderStatus> decode_status;
+   decoder_->Decode(
+       buffer,
+@@ -466,6 +493,72 @@
+   return decode_status->is_ok();
+ }
+ 
++void AudioFileReader::OpenAsync(
++    std::unique_ptr<AudioDecoder> decoder,
++    base::OnceCallback<void(bool)> callback) {
++  CHECK(!decoder_ && !glue_ && !async_open_cb_ && !async_read_cb_);
++  AudioDecoderConfig config;
++  if (!decoder || !OpenDemuxer() || !ReadConfig(&config)) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(callback), false));
++    return;
++  }
++  decoder_ = std::move(decoder);
++  config_ = std::move(config);
++  async_open_cb_ = std::move(callback);
++  decoder_->Initialize(
++      *config_, nullptr,
++      base::BindOnce(&AudioFileReader::OnAsyncOpened, weak_factory_.GetWeakPtr()),
++      base::BindRepeating(&AudioFileReader::OnOutput, weak_factory_.GetWeakPtr()),
++      base::DoNothing());
++}
++
++void AudioFileReader::OnAsyncOpened(DecoderStatus status) {
++  std::move(async_open_cb_).Run(status.is_ok());
++}
++
++void AudioFileReader::ReadAsync(AsyncReadCB callback) {
++  CHECK(decoder_ && config_ && !async_open_cb_ && !async_read_cb_);
++  async_audio_packets_.clear();
++  decoded_audio_packets_ = &async_audio_packets_;
++  num_frames_emitted_ = 0;
++  on_output_error_ = false;
++  async_read_cb_ = std::move(callback);
++  ReadNextAsyncPacket();
++}
++
++void AudioFileReader::ReadNextAsyncPacket() {
++  auto packet = ScopedAVPacket::Allocate();
++  const bool eos = !ReadPacket(packet.get());
++  auto buffer = eos ? DecoderBuffer::CreateEOSBuffer() : MakeDecoderBuffer(packet);
++  decoder_->Decode(
++      std::move(buffer),
++      base::BindOnce(&AudioFileReader::OnAsyncDecoded,
++                     weak_factory_.GetWeakPtr(), eos));
++}
++
++void AudioFileReader::OnAsyncDecoded(bool eos, DecoderStatus status) {
++  if (!status.is_ok() || on_output_error_ || eos) {
++    FinishAsyncRead(status.is_ok() && !on_output_error_);
++    return;
++  }
++  // Post rather than recurse: also tolerates synchronous test decoders and
++  // allows cancellation between packets without an unbounded packet queue.
++  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++      FROM_HERE, base::BindOnce(&AudioFileReader::ReadNextAsyncPacket,
++                               weak_factory_.GetWeakPtr()));
++}
++
++void AudioFileReader::FinishAsyncRead(bool success) {
++  if (pending_output_buffer_) {
++    FinalizeDecodedBuffer(std::move(pending_output_buffer_), success);
++  }
++  decoded_audio_packets_ = nullptr;
++  auto callback = std::move(async_read_cb_);
++  auto packets = std::move(async_audio_packets_);
++  std::move(callback).Run(success, std::move(packets));
++}
++
+ bool AudioFileReader::IsMp3File() {
+   return glue_->container() ==
+          container_names::MediaContainerName::kContainerMP3;
+--- a/media/filters/audio_file_reader_unittest.cc
++++ b/media/filters/audio_file_reader_unittest.cc
+@@ -10,6 +10,9 @@
+ #include "base/strings/string_number_conversions.h"
+ #include "base/test/scoped_feature_list.h"
+ #include "base/time/time.h"
++#include "base/task/sequenced_task_runner.h"
++#include "base/test/task_environment.h"
++#include "base/test/bind.h"
+ #include "build/build_config.h"
+ #include "crypto/hash.h"
+ #include "media/base/audio_bus.h"
+@@ -374,4 +377,95 @@
+ #endif
+ );
+ 
++
++namespace {
++struct AsyncReaderCounts { int decodes = 0; int eos = 0; };
++// Delayed callbacks model Mojo scheduling; this is not a PCM/codec test.
++class AsyncReaderTestDecoder final : public AudioDecoder {
++ public:
++  AsyncReaderTestDecoder(AsyncReaderCounts* counts, bool disconnected)
++      : counts_(counts), disconnected_(disconnected) {}
++  AudioDecoderType GetDecoderType() const override { return AudioDecoderType::kTesting; }
++  void Initialize(const AudioDecoderConfig&, CdmContext*, InitCB callback,
++                  const OutputCB&, const WaitingCB&) override {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(callback), DecoderStatus::Codes::kOk));
++  }
++  void Decode(scoped_refptr<DecoderBuffer> buffer, DecodeCB callback) override {
++    ++counts_->decodes;
++    if (buffer->end_of_stream()) ++counts_->eos;
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(callback),
++          disconnected_ ? DecoderStatus::Codes::kDisconnected : DecoderStatus::Codes::kOk));
++  }
++  void Reset(base::OnceClosure callback) override {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE, std::move(callback));
++  }
++ private:
++  raw_ptr<AsyncReaderCounts> counts_;
++  bool disconnected_;
++};
++}
++
++TEST(AsyncAudioFileReaderTest, DelayedDecodeAndEos) {
++  base::test::TaskEnvironment tasks;
++  auto data = ReadTestDataFile("bear-audio-lc-aac.aac");
++  InMemoryUrlProtocol protocol(*data, false);
++  AudioFileReader reader(&protocol);
++  AsyncReaderCounts counts;
++  int open_calls = 0, read_calls = 0;
++  bool opened = false, read_ok = false;
++  reader.OpenAsync(std::make_unique<AsyncReaderTestDecoder>(&counts, false),
++      base::BindLambdaForTesting([&](bool ok) { ++open_calls; opened = ok; }));
++  EXPECT_EQ(open_calls, 0);
++  tasks.RunUntilIdle();
++  ASSERT_TRUE(opened);
++  reader.ReadAsync(base::BindLambdaForTesting(
++      [&](bool ok, std::vector<std::unique_ptr<AudioBus>> packets) {
++        ++read_calls; read_ok = ok; EXPECT_TRUE(packets.empty());
++      }));
++  EXPECT_EQ(read_calls, 0);
++  tasks.RunUntilIdle();
++  EXPECT_EQ(open_calls, 1);
++  EXPECT_EQ(read_calls, 1);
++  EXPECT_TRUE(read_ok);
++  EXPECT_GT(counts.decodes, 1);
++  EXPECT_EQ(counts.eos, 1);
++}
++
++TEST(AsyncAudioFileReaderTest, DisconnectStopsBeforeEos) {
++  base::test::TaskEnvironment tasks;
++  auto data = ReadTestDataFile("bear-audio-lc-aac.aac");
++  InMemoryUrlProtocol protocol(*data, false);
++  AudioFileReader reader(&protocol);
++  AsyncReaderCounts counts;
++  reader.OpenAsync(std::make_unique<AsyncReaderTestDecoder>(&counts, true),
++      base::BindLambdaForTesting([](bool ok) { EXPECT_TRUE(ok); }));
++  tasks.RunUntilIdle();
++  int callbacks = 0;
++  reader.ReadAsync(base::BindLambdaForTesting(
++      [&](bool ok, std::vector<std::unique_ptr<AudioBus>> packets) {
++        ++callbacks; EXPECT_FALSE(ok); EXPECT_TRUE(packets.empty());
++      }));
++  tasks.RunUntilIdle();
++  EXPECT_EQ(callbacks, 1);
++  EXPECT_EQ(counts.decodes, 1);
++  EXPECT_EQ(counts.eos, 0);
++}
++
++TEST(AsyncAudioFileReaderTest, DestructionCancelsPendingOpenOnce) {
++  base::test::TaskEnvironment tasks;
++  auto data = ReadTestDataFile("bear-audio-lc-aac.aac");
++  InMemoryUrlProtocol protocol(*data, false);
++  auto reader = std::make_unique<AudioFileReader>(&protocol);
++  AsyncReaderCounts counts;
++  int callbacks = 0;
++  reader->OpenAsync(std::make_unique<AsyncReaderTestDecoder>(&counts, false),
++      base::BindLambdaForTesting([&](bool ok) { ++callbacks; EXPECT_FALSE(ok); }));
++  reader.reset();
++  tasks.RunUntilIdle();
++  EXPECT_EQ(callbacks, 1);
++  EXPECT_EQ(counts.decodes, 0);
++}
++
+ }  // namespace media

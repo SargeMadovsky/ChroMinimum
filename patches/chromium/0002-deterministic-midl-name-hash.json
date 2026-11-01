@@ -1,0 +1,25 @@
+{
+  "chromium": "154.0.8037.98",
+  "path": "build/toolchain/win/midl.py",
+  "before_sha256": "8a805574f0140476837fcd2a5b6cdce8246cfbc416ca70c3b061e99242843564",
+  "after_sha256": "00031ff655aa700f76c33a59f93417e6b4f7a4c71b43f8aa9dbf171587b91cef",
+  "required_enabled_feature": null,
+  "scope": "build-only; TLB library name hash per declared LCID; all upstream output comparisons retained",
+  "replaces_build_fix_sha256": "5e91cf6ee0659ef78af31714b9172418997e2f218f8b6bd7f92448cf38081481",
+  "validation_cases": [
+    {
+      "file": "tracing_service_idl.tlb",
+      "baseline_rebuild_identical": true,
+      "corrected_identical": true,
+      "input_sha256": "5f51521224f2ad3bdf5a43bb89a3b3ff71c337acbf85c4696a9a75ce6416dad3",
+      "expected_sha256": "e848b4dc9b8e4947c22251bf1743a16062836646165a9d3c56654d5697e1c824"
+    },
+    {
+      "file": "updater_legacy_idl.tlb",
+      "baseline_rebuild_identical": true,
+      "corrected_identical": true,
+      "input_sha256": "79593445c19574466809fef2fc8448710e68a7e11881328d4e6ff2918673d25e",
+      "expected_sha256": "333cd2dbc89f908928731c9386a5fedc4950bd78b6617c19b797c24db62920e6"
+    }
+  ]
+}

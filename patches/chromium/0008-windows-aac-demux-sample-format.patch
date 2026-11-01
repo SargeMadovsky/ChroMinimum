@@ -1,0 +1,19 @@
+--- a/media/ffmpeg/ffmpeg_common.cc
++++ b/media/ffmpeg/ffmpeg_common.cc
+@@ -397,6 +397,16 @@
+   }
+ 
+   switch (codec) {
++#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_PROPRIETARY_CODECS)
++    case AudioCodec::kAAC:
++      // A demux-only FFmpeg build cannot infer the decoded AAC sample format.
++      // Use a nominal PCM format, as for MP4StreamParser; the platform decoder
++      // negotiates its actual output format. Keep formats reported by FFmpeg.
++      if (sample_format == kUnknownSampleFormat) {
++        sample_format = kSampleFormatS16;
++      }
++      break;
++#endif
+     // For AC3/EAC3 we enable only demuxing, but not decoding, so FFmpeg does
+     // not fill |sample_fmt|.
+     case AudioCodec::kAC3:

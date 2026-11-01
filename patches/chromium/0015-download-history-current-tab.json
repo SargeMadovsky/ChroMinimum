@@ -1,0 +1,15 @@
+{
+  "chromium": "154.0.8037.98",
+  "requires": "0014-download-progress-ring",
+  "files": {
+    "chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc": {
+      "before_sha256": "80288bf83b03aa74f45e1a49de5b06064c9f6cba53573ef64ce34640d04fd8ee",
+      "after_sha256": "cd8eec0d0f1676b3b58204db635f684ce143bff6c090b4e376f4f49ecfa01c9d"
+    }
+  },
+  "cef_api_changed": false,
+  "runtime_validated": true,
+  "scope": "CEF custom anchor empty history fallback stays in current WebContents; other Chrome windows unchanged",
+  "validation_scope": "Empty history and complete/cancel/interrupted one-page regressions with glyph/ring; media/sandbox/fullscreen passed",
+  "report": "docs/reports/download-current-tab-20261101/summary.json"
+}

@@ -46,6 +46,18 @@ fn platform_bundle(
     let launcher = std::env::current_dir()?.join("updater/target/release/cm-update.exe");
     let output_exe = output.join("chrominimum.exe");
     std::fs::copy(launcher, &output_exe)?;
+    // Only public runtime files; portable profiles live beside core, not inside it.
+    use std::os::windows::process::CommandExt;
+    let system =
+        std::path::PathBuf::from(std::env::var_os("SystemRoot").ok_or("SystemRoot missing")?);
+    let status = std::process::Command::new(system.join("System32/icacls.exe"))
+        .arg(output.join("core"))
+        .args(["/grant", "*S-1-15-2-1:(OI)(CI)(RX)"])
+        .creation_flags(0x08000000)
+        .status()?;
+    if !status.success() {
+        return Err("Cannot grant AppContainer runtime read/execute access".into());
+    }
     Ok(output_exe)
 }
 

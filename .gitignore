@@ -15,3 +15,7 @@
 *.pfx
 *.p12
 *.key
+
+# Python build helper caches
+__pycache__/
+*.py[cod]

@@ -1,0 +1,25 @@
+--- a/media/BUILD.gn
++++ b/media/BUILD.gn
+@@ -87,9 +87,21 @@
+   }
+ }
+ 
++# Explicit, default-off Windows system-codec experiment. Registration stays
++# enabled while the selected FFmpeg build omits AAC/H.264 implementations.
++declare_args() {
++  chrominimum_platform_codecs_only = false
++}
++assert(!chrominimum_platform_codecs_only ||
++           (is_win && proprietary_codecs && media_use_ffmpeg &&
++            ffmpeg_branding == "Chromium" && !enable_ffmpeg_video_decoders &&
++            !media_use_openh264),
++       "Platform-only experiment requires Windows, format registration, " +
++           "Chromium FFmpeg, no FFmpeg video decoders and no OpenH264")
++
+ if (proprietary_codecs && media_use_ffmpeg) {
+   assert(
+-      ffmpeg_branding != "Chromium",
++      ffmpeg_branding != "Chromium" || chrominimum_platform_codecs_only,
+       "proprietary codecs and ffmpeg_branding set to Chromium are incompatible")
+ }
+ 

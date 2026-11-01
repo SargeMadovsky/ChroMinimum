@@ -15,6 +15,10 @@ fn main() {
             .compile("cm_engine_loader");
         // No libcef code may run before the official loader verifies it.
         println!("cargo:rustc-cdylib-link-arg=/DELAYLOAD:libcef.dll");
+        // UI helpers are used only by the browser process. Renderer lockdown
+        // must not require initializing USER32/SHELL32 while loading our DLL.
+        println!("cargo:rustc-cdylib-link-arg=/DELAYLOAD:user32.dll");
+        println!("cargo:rustc-cdylib-link-arg=/DELAYLOAD:SHELL32.dll");
         println!("cargo:rustc-link-lib=wintrust");
         println!("cargo:rustc-link-lib=crypt32");
     }

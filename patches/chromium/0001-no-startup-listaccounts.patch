@@ -1,0 +1,18 @@
+--- a/components/signin/public/identity_manager/identity_manager.cc
++++ b/components/signin/public/identity_manager/identity_manager.cc
+@@ -458,12 +458,9 @@
+ void IdentityManager::OnNetworkInitialized() {
+   gaia_cookie_manager_service_->InitCookieListener();
+   account_fetcher_service_->OnNetworkInitialized();
+-  // Trigger ListAccounts once the network is initialized to ensure the accounts
+-  // in cookie jar are up to date.
+-  if (base::FeatureList::IsEnabled(
+-          switches::kAvoidAutoTriggerListAccountsOnStale)) {
+-    gaia_cookie_manager_service_->ListAccounts();
+-  }
++  // ChroMinimum: network startup must not enumerate Google accounts.
++  // Keep cookie observation and account fetcher initialization intact.
++  // Pair with AvoidAutoTriggerListAccountsOnStale for cache-only reads.
+ }
+ 
+ CoreAccountId IdentityManager::PickAccountIdForAccount(

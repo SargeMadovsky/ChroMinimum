@@ -15,9 +15,16 @@ p.add_argument('--engine-version', required=True)
 p.add_argument('--shell-version', default='0.0.1')
 p.add_argument('--release-tag', required=True)
 p.add_argument('--licenses', default='dist/LICENSES-RUST.html')
+p.add_argument('--media-codecs', action='store_true',
+               help='Publisher assertion: packaged H.264/AAC runtime passed playback tests')
 a = p.parse_args()
+if a.media_codecs and a.release_tag != 'core-media-windows-x64':
+    raise ValueError('Media packages must use the dedicated media release tag')
 root = pathlib.Path(__file__).resolve().parent.parent
 bundle = pathlib.Path(a.bundle).resolve()
+credits = (bundle / 'CREDITS.html').read_text(encoding='utf-8')
+if len(credits) < 100_000 or 'This is sample credits page.' in credits:
+    raise ValueError('Full generated Chromium credits are required')
 output = pathlib.Path(a.output).resolve()
 output.parent.mkdir(parents=True, exist_ok=True)
 assert 0 <= a.min_safe_sequence <= a.sequence and a.sequence > 0
@@ -47,5 +54,7 @@ manifest = dict(format=1, sequence=a.sequence, min_safe_sequence=a.min_safe_sequ
                 engine_version=a.engine_version, issued=timestamp, expires=timestamp + 30 * 86400,
                 url=f'https://github.com/SargeMadovsky/ChroMinimum/releases/download/{a.release_tag}/{output.name}',
                 size=output.stat().st_size, sha256=digest.hexdigest())
+if a.media_codecs:
+    manifest['media_codecs'] = True
 output.with_suffix('.manifest.json').write_text(json.dumps(manifest, separators=(',', ':')), encoding='utf-8')
 print(output)

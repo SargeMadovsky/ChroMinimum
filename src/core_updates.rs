@@ -11,11 +11,12 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-thread_local! { static BUTTON: RefCell<Option<LabelButton>> = const { RefCell::new(None) }; }
+thread_local! { static MENU_MODEL: RefCell<Option<MenuModel>> = const { RefCell::new(None) }; }
 static CONTEXT: OnceLock<(PathBuf, PathBuf)> = OnceLock::new();
 static POSTING: Mutex<bool> = Mutex::new(false);
 static BUSY: AtomicBool = AtomicBool::new(false);
 static HEALTHY: AtomicBool = AtomicBool::new(false);
+static MENU_LABEL: Mutex<&str> = Mutex::new("Проверить обновления ядра");
 
 pub fn runtime_lease() -> std::io::Result<Option<std::fs::File>> {
     if CONTEXT.get().is_none() && std::env::var_os("CHROMINIMUM_LAUNCHER").is_none() {
@@ -41,6 +42,10 @@ pub fn runtime_lease() -> std::io::Result<Option<std::fs::File>> {
 }
 
 pub fn configure(directory: PathBuf) {
+    // The modular launcher is offline until its own delivery channel is implemented.
+    if std::env::var_os("CHROMINIMUM_COMPONENT_ID").is_some() {
+        return;
+    }
     let directory = std::env::var_os("CHROMINIMUM_CORE_ROOT")
         .map(PathBuf::from)
         .unwrap_or(directory);
@@ -52,33 +57,42 @@ pub fn configure(directory: PathBuf) {
 pub fn initialize(smoke: bool) {
     if CONTEXT.get().is_some() {
         *POSTING.lock().unwrap() = true;
-        BUTTON.with(|slot| {
-            if let Some(button) = slot.borrow().as_ref() {
-                button.set_enabled(1);
-                button.set_tooltip_text(Some(&CefString::from("Проверить обновления ядра")));
-            }
-        });
+        set_menu_label("Проверить обновления ядра", true);
         if !smoke {
             let mut task = AutomaticCheck::new();
             post_delayed_task(ThreadId::UI, Some(&mut task), 60_000);
         }
     }
 }
-pub fn button(button: LabelButton) {
+pub fn menu_model(model: MenuModel) {
     if CONTEXT.get().is_none() {
-        button.set_enabled(0);
-        button.set_tooltip_text(Some(&CefString::from(
-            "Для обновлений запустите браузер через загрузчик ChroMinimum",
-        )));
+        let label = if std::env::var_os("CHROMINIMUM_COMPONENT_ID").is_some() {
+            "Обновления этой установки пока недоступны"
+        } else {
+            "Для обновлений запустите браузер через загрузчик ChroMinimum"
+        };
+        model.set_label(1, Some(&CefString::from(label)));
+        model.set_enabled(1, 0);
+    } else {
+        model.set_enabled(1, i32::from(!BUSY.load(Ordering::Relaxed)));
     }
-    BUTTON.with(|slot| *slot.borrow_mut() = Some(button));
+    MENU_MODEL.with(|slot| *slot.borrow_mut() = Some(model));
 }
 pub fn shutdown_bridge() {
     *POSTING.lock().unwrap() = false;
-    BUTTON.with(|slot| slot.borrow_mut().take());
+    MENU_MODEL.with(|slot| slot.borrow_mut().take());
 }
 pub fn healthy() {
     if HEALTHY.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    if let (Ok(id), Ok(ready)) = (
+        std::env::var("CHROMINIMUM_COMPONENT_ID"),
+        std::env::var("CHROMINIMUM_COMPONENT_READY"),
+    ) {
+        if super::component_ready::send(std::io::stdout(), &id, &ready).is_ok() {
+            super::smoke_event("component_readiness_reported");
+        }
         return;
     }
     if let (Some((_, directory)), Ok(sequence)) =
@@ -95,6 +109,18 @@ fn status(code: &str) {
     }
     let mut task = UpdateStatus::new(code.to_owned());
     post_task(ThreadId::UI, Some(&mut task));
+}
+fn set_menu_label(label: &'static str, enabled: bool) {
+    *MENU_LABEL.lock().unwrap() = label;
+    MENU_MODEL.with(|slot| {
+        if let Some(model) = slot.borrow().as_ref() {
+            model.set_label(1, Some(&CefString::from(label)));
+            model.set_enabled(1, i32::from(enabled));
+        }
+    });
+}
+pub fn current_menu_label() -> &'static str {
+    *MENU_LABEL.lock().unwrap()
 }
 pub fn check() {
     if !*POSTING.lock().unwrap() {
@@ -156,12 +182,8 @@ wrap_task! {
                 "error" => ("Проверить ещё раз", "Не удалось проверить обновления. Возможно, нет сети, канал недоступен или проверка подписи не пройдена. Текущее ядро не заменено", false),
                 _ => return,
             };
-            BUTTON.with(|slot| if let Some(button) = slot.borrow().as_ref() {
-                button.set_text(Some(&CefString::from(label)));
-                button.set_tooltip_text(Some(&CefString::from(tooltip)));
-                button.set_enabled(i32::from(!busy));
-                if button.is_drawn() != 0 { super::smoke_event("core_update_control_drawn"); }
-            });
+            let _ = tooltip;
+            set_menu_label(label, !busy);
         }
     }
 }

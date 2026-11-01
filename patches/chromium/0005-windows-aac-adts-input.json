@@ -1,0 +1,16 @@
+{
+  "chromium": "154.0.8037.98",
+  "chromium_commit": "b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+  "requires": "0004-windows-platform-aac.patch",
+  "files": {
+    "media/filters/win/media_foundation_audio_decoder.cc": {
+      "before_sha256": "2dcd15bba266806c2070fbe248fd0086ced7a03e91d98f21ce6843268fae8588",
+      "after_sha256": "8e8464a2607f2d72787fc9ebd0506819006befc9cc84789cb5f59da7b84ba578"
+    }
+  },
+  "scope": "Normalize a complete single ADTS AAC frame to RAW for the Windows MFT; retain raw input, timestamps and non-AAC paths",
+  "runtime_validated": true,
+  "compile_validated": true,
+  "runtime_validation_scope": "isolated captured MSE and normal MP4/WebM; manual hdrezka pending; FFmpeg remains bundled",
+  "runtime_report": "docs/reports/platform-aac-adts-20261026/summary.json"
+}

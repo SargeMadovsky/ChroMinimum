@@ -1,0 +1,24 @@
+{
+  "chromium": "154.0.8037.98",
+  "chromium_commit": "b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+  "files": {
+    "media/filters/win/media_foundation_audio_decoder.cc": {
+      "before_sha256": "4aba8648dd7fc4711356e1760bc6df337041a1f1e0737a41f0edc59b24464b42",
+      "after_sha256": "2dcd15bba266806c2070fbe248fd0086ced7a03e91d98f21ce6843268fae8588"
+    },
+    "media/mojo/services/gpu_mojo_media_client_win.cc": {
+      "before_sha256": "d1980c7307be94bd24470f3aee6a57d5a8c22dedb3230374a7788ec76925b5c6",
+      "after_sha256": "7fa3cd2a7cca244b4e55a13696903797584ca574ea7cbdb9ff50f182ff3e18bd"
+    },
+    "media/renderers/default_decoder_factory.cc": {
+      "before_sha256": "b04215dae7aebe868af366bdc4a01175b04b229861855dd74e336af1689ca58b",
+      "after_sha256": "8aee4a79919c4e6d086d16645c083c445173e1e3867674e689e2584a46df8cf8"
+    }
+  },
+  "scope": "Experimental Windows platform AAC plus default-disabled platform-first selection; FFmpeg fallback retained; no WebAudio change",
+  "runtime_validated": false,
+  "compile_validated": true,
+  "required_enabled_feature": "ChroMinimumPlatformAudioFirst",
+  "aac_lc_browser_smoke_validated": true,
+  "validation_scope": "Windows 10 build 19045; AAC-LC 44100 stereo in MP4; platform-first feature enabled; restricted GPU/renderer and network AppContainer; no HE-AAC or system WebAudio validation"
+}

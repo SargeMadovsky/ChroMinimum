@@ -1,0 +1,8 @@
+{
+  "scope": "Build helper only: preserve Git worktree dependency tracking across Windows drives",
+  "before_sha256": "24cbbf3f06790a490b90c7d93210430463e856de8ea90c99693f6196e9862dc6",
+  "after_sha256": "594ee820e53a66a3e2fa2e3dfb448e735b94a52da718a7059413529119cb9d90",
+  "source": "third_party/angle/src/commit_id.py",
+  "runtime_changed": false,
+  "validation": "Actual ANGLE generator succeeded; isolated Ninja parsed cross-drive dependency; second run no work to do"
+}

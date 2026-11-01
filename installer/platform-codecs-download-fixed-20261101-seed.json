@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "security_sequence": 1,
+  "engine_version": "154.0.0-HEAD.1+g14c5a08+chromium-154.0.8037.98",
+  "media_codecs": true,
+  "files": {
+    "chrominimum.exe": "72b5ea0f17f4741c38d90ff34764fcfd313f66ad4ccdfe1ae3b04779cb3731cf",
+    "chrominimum.dll": "cb0558b0e55596403f09f097fbfd6d361c4d09963e0a1a3a8624c3e233c2ea08",
+    "libcef.dll": "fd6327f87d21a6db6922e9dc8bd12e2c3717a82be6bdcecd1ef3eeaac8ebd5b2",
+    "chrome_elf.dll": "790f037ff1d76120f5508511d016dffe61d6cce06ac397134e589e6f73e8ffd4"
+  }
+}

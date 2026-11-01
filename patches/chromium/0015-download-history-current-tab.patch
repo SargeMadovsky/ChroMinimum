@@ -1,0 +1,34 @@
+--- a/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
++++ b/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
+@@ -45,6 +45,10 @@
+ #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
+ #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+ #include "chrome/grit/generated_resources.h"
++#include "chrome/common/webui_url_constants.h"
++#include "content/public/browser/navigation_controller.h"
++#include "content/public/browser/web_contents.h"
++#include "content/public/common/referrer.h"
+ #include "components/autofill/content/browser/content_autofill_client.h"
+ #include "components/autofill/core/browser/suggestions/suggestion_hiding_reason.h"
+ #include "components/feature_engagement/public/feature_constants.h"
+@@ -906,6 +910,20 @@
+   if (!bubble_delegate_ && !bubble_controller_->GetMainView().empty()) {
+     button_click_time_ = base::TimeTicks::Now();
+     ShowBubble(DownloadBubbleMode::kComplete);
++  } else if (GetChroMinimumDownloadAnchor(browser_view_)) {
++    // An empty/not-yet-populated bubble must not escape the CEF Views window
++    // through ShowSingletonTab and create a standard Chrome browser.
++    if (bubble_delegate_) {
++      HideDetails();
++    }
++    if (auto* tab = browser_view_->browser()->GetActiveTabInterface()) {
++      tab->GetContents()->GetController().LoadURL(
++          GURL(chrome::kChromeUIDownloadsURL), content::Referrer(),
++          ui::PAGE_TRANSITION_AUTO_TOPLEVEL, std::string());
++      if (IsChroMinimumDownloadProbe()) {
++        LOG(INFO) << "CM_DOWNLOAD_EMPTY_HISTORY_CURRENT_TAB";
++      }
++    }
+   } else {
+     chrome::ShowDownloads(browser_view_->browser());
+   }

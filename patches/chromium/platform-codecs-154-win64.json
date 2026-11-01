@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "status": "patch_replay_validated_fresh_build_not_repeated",
+  "cef_commit": "14c5a089e8452874cb1a556dc3fde26ed2d87723",
+  "chromium_commit": "b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+  "dependency_commits": {
+    ".": "b859317bf11f6be47f9b7799ec690a0a42a1fb33",
+    "third_party/angle": "e12217f3e133cb1029b050d893b1806d141483be",
+    "third_party/ffmpeg": "a06d51a20a28f980b2ddc6b7d73d69b2d29bf323"
+  },
+  "cef_preparation": {
+    "patch": "cef/patch/patches/angle_commit_config.patch",
+    "sha256": "5969efda9d30b1b567416c26bfa095506639a266ec68f4fd2ea60d3a394a24c3",
+    "sparse_include": "src/commit_id.py",
+    "sha256_lf": "7feda3d6a8f92bd9829ac366b0125212e0e38bfef1bc5bd0f1e9ef020a03a218"
+  },
+  "patches": [
+    {
+      "patch": "patches/chromium/0001-no-startup-listaccounts.patch",
+      "sha256": "7314f6c1a658f13bb06ee03641200cebf02e9810db79811a05802fdedf982498"
+    },
+    {
+      "patch": "patches/chromium/0002-deterministic-midl-name-hash.patch",
+      "sha256": "952fd2bedc3010af852705bd133f0349cc791a58d39b431bed4f7fb11548c5d3"
+    },
+    {
+      "patch": "patches/chromium/0003-instance-tracer-untrace-reentrancy.patch",
+      "sha256": "642b2c6436c220887ce53d5f90e4dc39719474c1e03ea0a5a21a6996559270c0"
+    },
+    {
+      "patch": "patches/chromium/0004-windows-platform-aac.patch",
+      "sha256": "a84e7c65f0c583ae28d6fbb2bc6e79bc6e69026b61d51e088ebf697937c0fcbe"
+    },
+    {
+      "patch": "patches/chromium/0005-windows-aac-adts-input.patch",
+      "sha256": "6dfab51ec04ee9a86103a72f4ec56794bff0f8f9018a9a180029418c39b58762"
+    },
+    {
+      "patch": "patches/chromium/0006-platform-codecs-only-gn.patch",
+      "sha256": "2def1602bc6be7d649bcaf50fedabed655d3f4bb5e9e53358db137774cf137c1"
+    },
+    {
+      "patch": "patches/chromium/0007-angle-cross-drive-depfile.patch",
+      "sha256": "8d31a0d8b082f6772e0905c09410094f36032042820f5d22eeaa47fc22698ec1"
+    },
+    {
+      "patch": "patches/chromium/0008-windows-aac-demux-sample-format.patch",
+      "sha256": "3e6c4bafadccbfc2d61131b22fcdfdac400df7e27a9d570a8cbe87d3f4fd38c9"
+    },
+    {
+      "patch": "patches/chromium/0009-ffmpeg-adts-demux-only.patch",
+      "sha256": "78bb712888baec5ef411462e6b5ae6f1ccf4f824269461f20cfbca609763f92c"
+    },
+    {
+      "patch": "patches/chromium/0010-async-audio-file-reader-prototype.patch",
+      "sha256": "a51bfcf4826865169048bfc432bd054d1ef5a73ccfb3234afea2ef25f0eab1be"
+    },
+    {
+      "patch": "patches/chromium/0011-webaudio-platform-aac-prototype.patch",
+      "sha256": "e95ca3e8b5d91af58f4cf102a52e32c68f86ea674f2e99d45262fe7e18d4de89"
+    }
+  ],
+  "expected_postimages": {
+    "components/signin/public/identity_manager/identity_manager.cc": "803233624db3aa916d40b219a49e4937bb0d3a8b83e69c4779c549090c36c0c6",
+    "build/toolchain/win/midl.py": "00031ff655aa700f76c33a59f93417e6b4f7a4c71b43f8aa9dbf171587b91cef",
+    "base/allocator/partition_allocator/src/partition_alloc/pointers/instance_tracer.cc": "ecd4bf2771329e20ab3e7f9210d2c45c96c4507ffa0e8407d3c7c42863e195d8",
+    "media/filters/win/media_foundation_audio_decoder.cc": "8e8464a2607f2d72787fc9ebd0506819006befc9cc84789cb5f59da7b84ba578",
+    "media/mojo/services/gpu_mojo_media_client_win.cc": "7fa3cd2a7cca244b4e55a13696903797584ca574ea7cbdb9ff50f182ff3e18bd",
+    "media/renderers/default_decoder_factory.cc": "8aee4a79919c4e6d086d16645c083c445173e1e3867674e689e2584a46df8cf8",
+    "media/BUILD.gn": "ee0bbbf8de94d7a4d908147f318c6989caef20e0d5adb732e76bd2552d310f59",
+    "third_party/angle/src/commit_id.py": "594ee820e53a66a3e2fa2e3dfb448e735b94a52da718a7059413529119cb9d90",
+    "media/ffmpeg/ffmpeg_common.cc": "d6724e752dc4467d6393bed41bdadc52176f16e336137ea3ef3d7609ddfdaa48",
+    "third_party/ffmpeg/chromium/config/Chromium/win/x64/config.h": "52606fb44522322aabc60828db28685545a4992e3da040bc3b278d6cff00ad1d",
+    "third_party/ffmpeg/chromium/config/Chromium/win/x64/config_components.h": "dd1ccdba1c0619e93240d7dc04325fdcb7376d73c1bd72b7ef75f48c6355f1be",
+    "third_party/ffmpeg/chromium/config/Chromium/win/x64/config_components.asm": "b6af62c6cb0549bee0b7760d82e45030b945cfd1ba6294eabca42f932d271508",
+    "third_party/ffmpeg/chromium/config/Chromium/win/x64/libavcodec/parser_list.c": "117d2bd3ff22ef9fe43a42f862689b766fe3c136c304635053cff96fba989208",
+    "third_party/ffmpeg/chromium/config/Chromium/win/x64/libavformat/demuxer_list.c": "71b14f15be7909233422de758a5c9e6a9e4ab1a773ea666fd621cd6cf40aa5f5",
+    "third_party/ffmpeg/ffmpeg_generated.gni": "2d47d225a35aa9e77c25268783247c56091b064cb0761e4361390be5f24151ee",
+    "third_party/ffmpeg/libavcodec/aac_ac3_parser.c": "f67db9ab0f32fe9b912e0cb36b8c73dc08fbb60d0c948c37e9efdec54527063b",
+    "third_party/ffmpeg/chromium/config/Chromium/win/x64/config.asm": "37281ab5b848f22a334522cebfb13470d7f9f0d7e2266bfe25d3f1538ef4c452",
+    "media/filters/audio_file_reader.h": "ff10d681d7f9970b7f4a0206b21bde0bee8be7b5f61a15dc501926802654c9c4",
+    "media/filters/audio_file_reader.cc": "5a61bca45138125c4edc2956ab98f05a532063529fed5df6f0dd6d7d7a22fd66",
+    "media/filters/audio_file_reader_unittest.cc": "19d29bf112fe6d4152ef6132647bbf926af068ce119733c3a3d169a9657159d6",
+    "third_party/blink/renderer/platform/media/async_audio_file_decoder.h": "cb277841a62b5bb20447931a6bb9f2b05cce96dc1b0ba26772891f33768e1f50",
+    "third_party/blink/renderer/platform/media/async_audio_file_decoder.cc": "70f3cd28a534a7a2369b86fe1c08345803922c6329a56147cd9b364c825b1d25",
+    "third_party/blink/renderer/platform/media/BUILD.gn": "19195a276964647e2a6153a7a6c7f0de82eac61ff3e3bf7520542384a6910f77",
+    "third_party/blink/renderer/platform/media/DEPS": "69dca1ef639b6666e201b3792bc77955c89f97b6ad5f267445ab6d10983e8c79",
+    "third_party/blink/renderer/modules/webaudio/base_audio_context.h": "3f6db60b92258f5f07f3914fc5c7bb80a2f02b5476731c8b98e364011196ac0e",
+    "third_party/blink/renderer/modules/webaudio/base_audio_context.cc": "8b6cf01e7a2719967b06ee3b1247d0b9bd03d2b8ad6bf26855c734c666184209",
+    "media/mojo/clients/BUILD.gn": "3d0bce24dec6ceafd86f4de5c724db16fcc71f4496b217af31b8bf45a3b27afc"
+  },
+  "args_file": "patches/chromium/platform-codecs-154-win64.args.gn",
+  "args_sha256": "afd03e8d8840f6256a61fbdd7d52f43f98f83752be5ca6240d38f95c28ad15e7",
+  "build_targets": [
+    "libcef",
+    "bootstrap",
+    "bootstrapc"
+  ],
+  "tested_candidate_dll_sha256": "f41f1d3149f53bb54b53a5b16cfa1f1bba42751f82544fb2fa2eae7d13d5a30b",
+  "runtime_feature_required": "ChroMinimumPlatformAudioFirst",
+  "tested_adapter_sha256": "da4efeb1366d6134050f7acf462d27897dccf7ad70cffb307e09d6e877a5c17b",
+  "requirements": {
+    "platform": "Windows x64",
+    "msvc": "14.51.36231",
+    "windows_sdk": "10.0.28000.0",
+    "jobs": 6,
+    "temporary_files_and_caches": "E: or another explicitly selected build volume; never silently use system drive"
+  },
+  "limitations": [
+    "CEF preparation applies its full upstream patch set; sparse replay checked only touched files",
+    "Run pinned dependency hooks before GN; prior missing CIPD/generated files are documented build-environment failures",
+    "No bit-identical full rebuild or fresh machine validation",
+    "Production feature default and signed updater integration not validated",
+    "Not public distribution approval"
+  ]
+}

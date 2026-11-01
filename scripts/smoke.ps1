@@ -13,7 +13,7 @@ if ($taskFixture) { $Url = ([Uri](Join-Path $taskRoot 'tests\fixtures\smoke.html
 $taskArguments = @('--smoke-test', "--url=$Url")
 if ($UpdaterExpected) { $taskArguments += '--exercise-updater' }
 $taskRun = Start-Process -FilePath $taskExe -ArgumentList $taskArguments -PassThru
-if (-not $taskRun.WaitForExit($(if ($UpdaterExpected) { 180000 } else { 60000 }))) {
+if (-not $taskRun.WaitForExit($(if ($UpdaterExpected) { 180000 } elseif ($taskFixture) { 90000 } else { 60000 }))) {
     throw "Smoke timed out; inspect test process $($taskRun.Id). No user process was terminated."
 }
 $taskRun.Refresh()

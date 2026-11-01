@@ -1,0 +1,15 @@
+{
+  "chromium": "154.0.8037.98",
+  "requires": "0005-download-bubble-anchor",
+  "files": {
+    "chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc": {
+      "before_sha256": "ef90d43ea6ac18c8ee6f4fbb2afe76fc31090b0473bbd4359496c6e6662c40ea",
+      "after_sha256": "80288bf83b03aa74f45e1a49de5b06064c9f6cba53573ef64ce34640d04fd8ee"
+    }
+  },
+  "cef_api_changed": false,
+  "runtime_validated": true,
+  "scope": "Native progress ring on custom CEF button; keep complete dropdown unchanged",
+  "validation_scope": "Native ring paints intermediate progress and returns idle after complete/cancel/interrupted; bubble/button/Ctrl+J/resize/links/shutdown checked; visual owner acceptance pending",
+  "report": "docs/reports/download-ring-20261101/summary.json"
+}

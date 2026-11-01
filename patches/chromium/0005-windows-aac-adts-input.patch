@@ -1,0 +1,84 @@
+--- a/media/filters/win/media_foundation_audio_decoder.cc
++++ b/media/filters/win/media_foundation_audio_decoder.cc
+@@ -7,6 +7,8 @@
+ #include <mfapi.h>
+ #include <mferror.h>
+ #include <stdint.h>
++
++#include <optional>
+ #include <wmcodecdsp.h>
+ 
+ #include "base/auto_reset.h"
+@@ -119,7 +121,30 @@
+   }
+ }
+ 
+-bool PopulateInputSample(IMFSample* sample, const DecoderBuffer& input) {
++// MSE's MP4 parser can prefix AAC samples with ADTS. The Windows MFT is
++// configured for RAW AAC, while ordinary MP4 demuxing can already provide RAW.
++// Accept one complete ADTS frame; never strip bytes from a partial frame.
++std::optional<size_t> GetAacPayloadOffset(base::span<const uint8_t> data) {
++  if (data.size() < 2 || data[0] != 0xff || (data[1] & 0xf0) != 0xf0) {
++    return 0;
++  }
++  if (data.size() < 7 || (data[1] & 0x06) != 0 ||
++      ((data[2] >> 2) & 0x0f) >= 13 || (data[6] & 0x03) != 0) {
++    return std::nullopt;
++  }
++  const size_t header_size = (data[1] & 1) ? 7 : 9;
++  const size_t frame_size = (static_cast<size_t>(data[3] & 3) << 11) |
++                            (static_cast<size_t>(data[4]) << 3) |
++                            (data[5] >> 5);
++  if (frame_size != data.size() || frame_size <= header_size) {
++    return std::nullopt;
++  }
++  return header_size;
++}
++
++bool PopulateInputSample(IMFSample* sample,
++                         const DecoderBuffer& input,
++                         base::span<const uint8_t> payload) {
+   Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+   HRESULT hr = sample->GetBufferByIndex(0, &buffer);
+   RETURN_ON_HR_FAILURE(hr, "Failed to get buffer from sample", false);
+@@ -135,11 +160,11 @@
+   auto destination = UNSAFE_BUFFERS(base::span(destination_ptr, max_length));
+ 
+   RETURN_ON_FAILURE(!current_length, "Input length is zero", false);
+-  RETURN_ON_FAILURE(input.size() <= max_length, "Input length is too long",
++  RETURN_ON_FAILURE(payload.size() <= max_length, "Input length is too long",
+                     false);
+-  destination.copy_prefix_from(input);
+-
+-  hr = buffer->SetCurrentLength(input.size());
++  destination.copy_prefix_from(payload);
++
++  hr = buffer->SetCurrentLength(payload.size());
+   RETURN_ON_HR_FAILURE(hr, "Failed to set buffer length", false);
+ 
+   hr = buffer->Unlock();
+@@ -267,13 +292,22 @@
+     has_reset_ = false;
+   }
+ 
+-  auto sample = CreateEmptySampleWithBuffer(buffer->size(), 0);
++  base::span<const uint8_t> payload(*buffer);
++  if (config_.codec() == AudioCodec::kAAC) {
++    const auto offset = GetAacPayloadOffset(payload);
++    if (!offset) {
++      std::move(decode_cb_bound).Run(DecoderStatus::Codes::kFailed);
++      return;
++    }
++    payload = payload.subspan(*offset);
++  }
++  auto sample = CreateEmptySampleWithBuffer(payload.size(), 0);
+   if (!sample) {
+     std::move(decode_cb_bound).Run(DecoderStatus::Codes::kFailed);
+     return;
+   }
+ 
+-  if (!PopulateInputSample(sample.Get(), *buffer)) {
++  if (!PopulateInputSample(sample.Get(), *buffer, payload)) {
+     std::move(decode_cb_bound).Run(DecoderStatus::Codes::kFailed);
+     return;
+   }

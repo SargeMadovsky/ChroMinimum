@@ -1,0 +1,3 @@
+# Local measurement/report tools only; not linked into ChroMinimum.
+psutil==7.2.2
+matplotlib==3.10.8

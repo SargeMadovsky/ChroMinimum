@@ -1,0 +1,532 @@
+--- a/media/filters/audio_file_reader.h
++++ b/media/filters/audio_file_reader.h
+@@ -58,6 +58,9 @@
+       bool, std::vector<std::unique_ptr<AudioBus>>)>;
+   void OpenAsync(std::unique_ptr<AudioDecoder> decoder,
+                  base::OnceCallback<void(bool)> callback);
++  void OpenAsync(
++      base::OnceCallback<std::unique_ptr<AudioDecoder>()> decoder_factory,
++      base::OnceCallback<void(bool)> callback);
+   void ReadAsync(AsyncReadCB callback);
+ 
+   // After a call to Open(), attempts to decode up to `packets_to_read` amount
+--- a/media/filters/audio_file_reader.cc
++++ b/media/filters/audio_file_reader.cc
+@@ -21,6 +21,7 @@
+ #include "base/numerics/safe_math.h"
+ #include "base/time/time.h"
+ #include "base/task/sequenced_task_runner.h"
++#include "base/task/bind_post_task.h"
+ #include "media/base/audio_buffer.h"
+ #include "media/base/audio_bus.h"
+ #include "media/base/audio_sample_types.h"
+@@ -496,19 +497,35 @@
+ void AudioFileReader::OpenAsync(
+     std::unique_ptr<AudioDecoder> decoder,
+     base::OnceCallback<void(bool)> callback) {
++  OpenAsync(base::BindOnce([](std::unique_ptr<AudioDecoder> value) {
++              return value;
++            }, std::move(decoder)), std::move(callback));
++}
++
++void AudioFileReader::OpenAsync(
++    base::OnceCallback<std::unique_ptr<AudioDecoder>()> decoder_factory,
++    base::OnceCallback<void(bool)> callback) {
+   CHECK(!decoder_ && !glue_ && !async_open_cb_ && !async_read_cb_);
+   AudioDecoderConfig config;
+-  if (!decoder || !OpenDemuxer() || !ReadConfig(&config)) {
++  // This experimental fallback is deliberately restricted to AAC.
++  if (!OpenDemuxer() || !ReadConfig(&config) ||
++      config.codec() != AudioCodec::kAAC) {
+     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+         FROM_HERE, base::BindOnce(std::move(callback), false));
+     return;
+   }
+-  decoder_ = std::move(decoder);
++  decoder_ = std::move(decoder_factory).Run();
++  if (!decoder_) {
++    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
++        FROM_HERE, base::BindOnce(std::move(callback), false));
++    return;
++  }
+   config_ = std::move(config);
+   async_open_cb_ = std::move(callback);
+   decoder_->Initialize(
+       *config_, nullptr,
+-      base::BindOnce(&AudioFileReader::OnAsyncOpened, weak_factory_.GetWeakPtr()),
++      base::BindPostTaskToCurrentDefault(base::BindOnce(
++          &AudioFileReader::OnAsyncOpened, weak_factory_.GetWeakPtr())),
+       base::BindRepeating(&AudioFileReader::OnOutput, weak_factory_.GetWeakPtr()),
+       base::DoNothing());
+ }
+@@ -533,8 +550,8 @@
+   auto buffer = eos ? DecoderBuffer::CreateEOSBuffer() : MakeDecoderBuffer(packet);
+   decoder_->Decode(
+       std::move(buffer),
+-      base::BindOnce(&AudioFileReader::OnAsyncDecoded,
+-                     weak_factory_.GetWeakPtr(), eos));
++      base::BindPostTaskToCurrentDefault(base::BindOnce(
++          &AudioFileReader::OnAsyncDecoded, weak_factory_.GetWeakPtr(), eos)));
+ }
+ 
+ void AudioFileReader::OnAsyncDecoded(bool eos, DecoderStatus status) {
+--- /dev/null
++++ b/third_party/blink/renderer/platform/media/async_audio_file_decoder.h
+@@ -0,0 +1,22 @@
++// Experimental Windows AAC decoding for WebAudio, through sandboxed Mojo.
++#ifndef THIRD_PARTY_BLINK_RENDERER_PLATFORM_MEDIA_ASYNC_AUDIO_FILE_DECODER_H_
++#define THIRD_PARTY_BLINK_RENDERER_PLATFORM_MEDIA_ASYNC_AUDIO_FILE_DECODER_H_
++
++#include <memory>
++#include <vector>
++#include "base/functional/callback.h"
++#include "base/memory/scoped_refptr.h"
++#include "third_party/blink/renderer/platform/platform_export.h"
++
++namespace media { class AudioBus; }
++namespace blink {
++class ThreadSafeBrowserInterfaceBrokerProxy;
++// Call from a worker. Completion runs on a background sequence. The returned
++// cancellation closure is thread-safe. No WebAudioBus crosses threads.
++PLATFORM_EXPORT base::OnceClosure DecodeAudioFileDataAsync(
++    std::vector<uint8_t> data,
++    scoped_refptr<ThreadSafeBrowserInterfaceBrokerProxy> broker,
++    base::OnceCallback<void(
++        std::vector<std::unique_ptr<media::AudioBus>>, int)> callback);
++}  // namespace blink
++#endif
+--- /dev/null
++++ b/third_party/blink/renderer/platform/media/async_audio_file_decoder.cc
+@@ -0,0 +1,176 @@
++// Experimental request owner; native codec stays in the GPU sandbox.
++#include "third_party/blink/renderer/platform/media/async_audio_file_decoder.h"
++
++#include "base/functional/bind.h"
++#include "base/functional/callback_helpers.h"
++#include "base/memory/ref_counted_delete_on_sequence.h"
++#include "base/memory/weak_ptr.h"
++#include "base/synchronization/lock.h"
++#include "base/task/thread_pool.h"
++#include "base/timer/timer.h"
++#include "media/base/audio_bus.h"
++#include "media/filters/audio_file_reader.h"
++#include "media/filters/in_memory_url_protocol.h"
++#include "media/mojo/buildflags.h"
++#include "media/mojo/clients/mojo_audio_decoder.h"
++#include "media/mojo/mojom/interface_factory.mojom.h"
++#include "mojo/public/cpp/bindings/remote.h"
++#include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
++
++namespace blink {
++using media::AudioFileReader;
++using media::InMemoryUrlProtocol;
++namespace {
++using DecodedPackets = std::vector<std::unique_ptr<media::AudioBus>>;
++using AsyncDecodeCB = base::OnceCallback<void(DecodedPackets, int)>;
++
++// Cancellation is an event, not a polling loop. No Blink/GC pointers here.
++class AudioFileCancellation
++    : public base::RefCountedThreadSafe<AudioFileCancellation> {
++ public:
++  void Cancel() {
++    base::OnceClosure callback;
++    scoped_refptr<base::SequencedTaskRunner> runner;
++    {
++      base::AutoLock guard(lock_);
++      cancelled_ = true;
++      callback = std::move(callback_);
++      runner = runner_;
++    }
++    if (callback) runner->PostTask(FROM_HERE, std::move(callback));
++  }
++  void Bind(scoped_refptr<base::SequencedTaskRunner> runner,
++            base::OnceClosure callback) {
++    bool cancelled;
++    {
++      base::AutoLock guard(lock_);
++      cancelled = cancelled_;
++      if (!cancelled) {
++        runner_ = runner;
++        callback_ = std::move(callback);
++      }
++    }
++    if (cancelled) runner->PostTask(FROM_HERE, std::move(callback));
++  }
++  void Clear() {
++    base::AutoLock guard(lock_);
++    callback_.Reset();
++    runner_.reset();
++  }
++ private:
++  friend class base::RefCountedThreadSafe<AudioFileCancellation>;
++  ~AudioFileCancellation() = default;
++  base::Lock lock_;
++  bool cancelled_ GUARDED_BY(lock_) = false;
++  scoped_refptr<base::SequencedTaskRunner> runner_ GUARDED_BY(lock_);
++  base::OnceClosure callback_ GUARDED_BY(lock_);
++};
++
++#if BUILDFLAG(ENABLE_MOJO_AUDIO_DECODER)
++class AsyncAudioFileRequest
++    : public base::RefCountedDeleteOnSequence<AsyncAudioFileRequest> {
++ public:
++  AsyncAudioFileRequest(
++      scoped_refptr<base::SequencedTaskRunner> runner,
++      std::vector<uint8_t> data,
++      scoped_refptr<blink::ThreadSafeBrowserInterfaceBrokerProxy> broker,
++      scoped_refptr<AudioFileCancellation> cancellation, AsyncDecodeCB callback)
++      : base::RefCountedDeleteOnSequence<AsyncAudioFileRequest>(runner),
++        runner_(std::move(runner)), data_(std::move(data)),
++        broker_(std::move(broker)), cancellation_(std::move(cancellation)),
++        callback_(std::move(callback)) {}
++
++  void Start() {
++    cancellation_->Bind(runner_, base::BindOnce(
++        &AsyncAudioFileRequest::Cancel, weak_factory_.GetWeakPtr()));
++    // Prototype deadline: not yet a release compatibility policy.
++    deadline_.Start(FROM_HERE, base::Seconds(30), base::BindOnce(
++        &AsyncAudioFileRequest::Cancel, weak_factory_.GetWeakPtr()));
++    protocol_ = std::make_unique<InMemoryUrlProtocol>(data_, false);
++    reader_ = std::make_unique<AudioFileReader>(protocol_.get());
++    reader_->OpenAsync(
++        base::BindOnce(&AsyncAudioFileRequest::CreateDecoder,
++                       base::Unretained(this)),
++        base::BindOnce(&AsyncAudioFileRequest::OnOpened,
++                       scoped_refptr<AsyncAudioFileRequest>(this)));
++  }
++ private:
++  friend class base::RefCountedDeleteOnSequence<AsyncAudioFileRequest>;
++  friend class base::DeleteHelper<AsyncAudioFileRequest>;
++  ~AsyncAudioFileRequest() = default;
++
++  std::unique_ptr<media::AudioDecoder> CreateDecoder() {
++    if (!broker_) return nullptr;
++    broker_->GetInterface(factory_.BindNewPipeAndPassReceiver());
++    mojo::PendingRemote<media::mojom::AudioDecoder> remote;
++    factory_->CreateAudioDecoder(remote.InitWithNewPipeAndPassReceiver());
++    return std::make_unique<media::MojoAudioDecoder>(
++        runner_, &media_log_, std::move(remote));
++  }
++  void OnOpened(bool success) {
++    if (!callback_) return;
++    if (!success) { Finish({}, 0); return; }
++    reader_->ReadAsync(base::BindOnce(&AsyncAudioFileRequest::OnRead,
++                                    scoped_refptr<AsyncAudioFileRequest>(this)));
++  }
++  void OnRead(bool success, DecodedPackets packets) {
++    if (!callback_) return;
++    const int sample_rate = reader_->sample_rate();
++    if (!success) packets.clear();
++    Finish(std::move(packets), sample_rate);
++  }
++  void Cancel() { Finish({}, 0); }
++  void Finish(DecodedPackets packets, int sample_rate) {
++    if (!callback_) return;
++    deadline_.Stop();
++    weak_factory_.InvalidateWeakPtrs();
++    cancellation_->Clear();
++    reader_->Close();
++    factory_.reset();
++    auto callback = std::move(callback_);
++    std::move(callback).Run(std::move(packets), sample_rate);
++  }
++
++  scoped_refptr<base::SequencedTaskRunner> runner_;
++  std::vector<uint8_t> data_;
++  scoped_refptr<blink::ThreadSafeBrowserInterfaceBrokerProxy> broker_;
++  scoped_refptr<AudioFileCancellation> cancellation_;
++  AsyncDecodeCB callback_;
++  media::NullMediaLog media_log_;
++  mojo::Remote<media::mojom::InterfaceFactory> factory_;
++  std::unique_ptr<InMemoryUrlProtocol> protocol_;
++  std::unique_ptr<AudioFileReader> reader_;
++  base::OneShotTimer deadline_;
++  base::WeakPtrFactory<AsyncAudioFileRequest> weak_factory_{this};
++};
++#endif
++}  // namespace
++
++base::OnceClosure DecodeAudioFileDataAsync(
++    std::vector<uint8_t> data,
++    scoped_refptr<blink::ThreadSafeBrowserInterfaceBrokerProxy> broker,
++    AsyncDecodeCB callback) {
++#if BUILDFLAG(ENABLE_MOJO_AUDIO_DECODER)
++  auto runner = base::ThreadPool::CreateSequencedTaskRunner(
++      {base::MayBlock(), base::TaskPriority::USER_VISIBLE});
++  auto cancellation = base::MakeRefCounted<AudioFileCancellation>();
++  runner->PostTask(FROM_HERE, base::BindOnce(
++      [](scoped_refptr<base::SequencedTaskRunner> runner,
++         std::vector<uint8_t> data,
++         scoped_refptr<blink::ThreadSafeBrowserInterfaceBrokerProxy> broker,
++         scoped_refptr<AudioFileCancellation> cancellation,
++         AsyncDecodeCB callback) {
++        auto request = base::MakeRefCounted<AsyncAudioFileRequest>(
++            std::move(runner), std::move(data), std::move(broker),
++            std::move(cancellation), std::move(callback));
++        request->Start();
++      }, runner, std::move(data), std::move(broker), cancellation,
++      std::move(callback)));
++  return base::BindOnce(&AudioFileCancellation::Cancel, cancellation);
++#else
++  std::move(callback).Run({}, 0);
++  return base::DoNothing();
++#endif
++}
++
++}  // namespace blink
+--- a/third_party/blink/renderer/platform/media/BUILD.gn
++++ b/third_party/blink/renderer/platform/media/BUILD.gn
+@@ -25,6 +25,16 @@
+     "//url",
+   ]
+   deps = [ "//third_party/blink/renderer/platform:allow_discouraged_type" ]
++  if (is_win) {
++    sources += [
++      "async_audio_file_decoder.cc",
++      "async_audio_file_decoder.h",
++    ]
++    deps += [
++      "//media/mojo/clients",
++      "//media/mojo/mojom",
++    ]
++  }
+ }
+ 
+ component("media") {
+--- a/third_party/blink/renderer/platform/media/DEPS
++++ b/third_party/blink/renderer/platform/media/DEPS
+@@ -25,6 +25,8 @@
+   "+media/formats",
+   "+media/media_buildflags.h",
+   "+media/mojo/mojom",
++  "+media/mojo/clients",
++  "+media/mojo/buildflags.h",
+   "+media/renderers/paint_canvas_video_renderer.h",
+   "+net/base/data_url.h",
+   "+net/base/net_errors.h",
+--- a/third_party/blink/renderer/modules/webaudio/base_audio_context.h
++++ b/third_party/blink/renderer/modules/webaudio/base_audio_context.h
+@@ -26,6 +26,8 @@
+ #ifndef THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_BASE_AUDIO_CONTEXT_H_
+ #define THIRD_PARTY_BLINK_RENDERER_MODULES_WEBAUDIO_BASE_AUDIO_CONTEXT_H_
+ 
++#include "build/build_config.h"
++#include "base/functional/callback.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/memory/scoped_refptr.h"
+ #include "third_party/blink/renderer/bindings/core/v8/active_script_wrappable.h"
+@@ -43,6 +45,7 @@
+ #include "third_party/blink/renderer/platform/audio/audio_callback_metric_reporter.h"
+ #include "third_party/blink/renderer/platform/audio/audio_io_callback.h"
+ #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
++#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
+ #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
+ #include "third_party/blink/renderer/platform/heap/prefinalizer.h"
+ #include "third_party/blink/renderer/platform/wtf/threading.h"
+@@ -226,6 +229,11 @@
+                              V8DecodeSuccessCallback*,
+                              V8DecodeErrorCallback*);
+ 
++#if BUILDFLAG(IS_WIN)
++  void RegisterAsyncDecodeCancellation(
++      ScriptPromiseResolver<AudioBuffer>*, base::OnceClosure);
++#endif
++
+   virtual bool HasRealtimeConstraint() = 0;
+ 
+   // When a source node has started processing and needs to be protected,
+@@ -404,6 +412,10 @@
+   // alive until decodeAudioData finishes decoding and can tell the main thread
+   // to resolve them.
+   HeapHashSet<Member<ScriptPromiseResolverBase>> decode_audio_resolvers_;
++#if BUILDFLAG(IS_WIN)
++  HeapHashMap<Member<ScriptPromiseResolverBase>, base::OnceClosure>
++      decode_audio_cancellations_;
++#endif
+ 
+   // PeriodicWave's for the builtin oscillator types.  These only depend on the
+   // sample rate. so they can be shared with all OscillatorNodes in the context.
+--- a/third_party/blink/renderer/modules/webaudio/base_audio_context.cc
++++ b/third_party/blink/renderer/modules/webaudio/base_audio_context.cc
+@@ -28,6 +28,12 @@
+ #include "base/metrics/histogram_functions.h"
+ #include "build/build_config.h"
+ #include "media/base/audio_bus.h"
++#include "media/base/limits.h"
++#if BUILDFLAG(IS_WIN)
++#include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
++#include "third_party/blink/renderer/platform/media/async_audio_file_decoder.h"
++#endif
++#include "base/numerics/checked_math.h"
+ #include "third_party/blink/public/mojom/devtools/console_message.mojom-blink.h"
+ #include "third_party/blink/public/mojom/frame/lifecycle.mojom-shared.h"
+ #include "third_party/blink/public/platform/platform.h"
+@@ -107,6 +113,57 @@
+   }
+ }
+ 
++#if BUILDFLAG(IS_WIN)
++void FinishPlatformAudioDecode(
++    float target_sample_rate,
++    CrossThreadHandle<V8DecodeSuccessCallback> success_callback,
++    CrossThreadHandle<V8DecodeErrorCallback> error_callback,
++    CrossThreadHandle<ScriptPromiseResolver<AudioBuffer>> resolver,
++    CrossThreadHandle<BaseAudioContext> context,
++    scoped_refptr<base::SingleThreadTaskRunner> task_runner,
++    std::vector<std::unique_ptr<media::AudioBus>> packets, int sample_rate) {
++  scoped_refptr<AudioBus> bus;
++  if (!packets.empty() && sample_rate >= media::limits::kMinSampleRate &&
++      sample_rate <= media::limits::kMaxSampleRate) {
++    const int channels = packets.front()->channels();
++    base::CheckedNumeric<uint32_t> frames = 0;
++    bool valid = channels > 0 && channels <= media::limits::kMaxChannels;
++    for (const auto& packet : packets) {
++      valid &= packet->channels() == channels && packet->frames() > 0;
++      frames += packet->frames();
++    }
++    if (valid && frames.IsValid() && frames.ValueOrDie() > 0) {
++      bus = AudioBus::TryCreate(channels, frames.ValueOrDie());
++      if (bus) {
++        bus->SetSampleRate(sample_rate);
++        size_t offset = 0;
++        for (const auto& packet : packets) {
++          for (int channel = 0; channel < channels; ++channel) {
++            bus->Channel(channel)->MutableSpan()
++                .subspan(offset, base::checked_cast<size_t>(packet->frames())).copy_from(packet->channel(channel));
++          }
++          offset += base::checked_cast<size_t>(packet->frames());
++        }
++      }
++    }
++  }
++  packets.clear();
++  if (bus && bus->SampleRate() != target_sample_rate) {
++    bus = AudioBus::TryCreateBySampleRateConverting(
++        bus.get(), false, target_sample_rate);
++  }
++  PostCrossThreadTask(
++      *task_runner, FROM_HERE,
++      CrossThreadBindOnce(&NotifyDecodingComplete,
++                          MakeUnwrappingCrossThreadHandle(success_callback),
++                          MakeUnwrappingCrossThreadHandle(error_callback),
++                          blink::RetainedRef(std::move(bus)),
++                          MakeUnwrappingCrossThreadHandle(resolver),
++                          MakeUnwrappingCrossThreadHandle(context)));
++}
++
++#endif
++
+ void DecodeOnBackgroundThread(
+     ArrayBufferContents audio_data_contents,
+     float sample_rate,
+@@ -118,6 +175,27 @@
+   DCHECK(!IsMainThread());
+   scoped_refptr<AudioBus> bus = AudioBus::CreateBusFromInMemoryAudioFile(
+       audio_data_contents.ByteSpan(), false, sample_rate);
++#if BUILDFLAG(IS_WIN)
++  if (!bus) {
++    auto cancellation_context = context;
++    auto cancellation_resolver = resolver;
++    auto main_runner = task_runner;
++    const auto bytes = audio_data_contents.ByteSpan();
++    auto cancel = DecodeAudioFileDataAsync(
++        std::vector<uint8_t>(bytes.begin(), bytes.end()),
++        base::WrapRefCounted(Platform::Current()->GetBrowserInterfaceBroker()),
++        base::BindOnce(&FinishPlatformAudioDecode, sample_rate,
++                       std::move(success_callback), std::move(error_callback),
++                       std::move(resolver), std::move(context),
++                       std::move(task_runner)));
++    PostCrossThreadTask(*main_runner, FROM_HERE,
++        CrossThreadBindOnce(&BaseAudioContext::RegisterAsyncDecodeCancellation,
++            MakeUnwrappingCrossThreadHandle(std::move(cancellation_context)),
++            MakeUnwrappingCrossThreadHandle(std::move(cancellation_resolver)),
++            std::move(cancel)));
++    return;
++  }
++#endif
+ 
+   // A reference to `bus` is retained by base::OnceCallback and will be removed
+   // after `NotifyDecodingComplete()` is done.
+@@ -435,6 +513,20 @@
+                                                             dom_exception);
+ }
+ 
++#if BUILDFLAG(IS_WIN)
++void BaseAudioContext::RegisterAsyncDecodeCancellation(
++    ScriptPromiseResolver<AudioBuffer>* resolver, base::OnceClosure cancel) {
++  DCHECK(IsMainThread());
++  // A closed but live context can still decode; teardown removes its resolver.
++  if (!decode_audio_resolvers_.Contains(resolver)) {
++    if (cancel) std::move(cancel).Run();
++    return;
++  }
++  decode_audio_cancellations_.Set(resolver, std::move(cancel));
++}
++
++#endif
++
+ void BaseAudioContext::HandleDecodeAudioData(
+     AudioBuffer* audio_buffer,
+     ScriptPromiseResolver<AudioBuffer>* resolver,
+@@ -443,6 +535,9 @@
+   DCHECK(IsMainThread());
+   DCHECK(resolver);
+ 
++#if BUILDFLAG(IS_WIN)
++  decode_audio_cancellations_.erase(resolver);
++#endif
+   ScriptState* resolver_script_state = resolver->GetScriptState();
+   if (!IsInParallelAlgorithmRunnable(resolver->GetExecutionContext(),
+                                      resolver_script_state)) {
+@@ -860,6 +955,12 @@
+ }
+ 
+ void BaseAudioContext::RejectPendingDecodeAudioDataResolvers() {
++#if BUILDFLAG(IS_WIN)
++  for (auto& entry : decode_audio_cancellations_) {
++    if (entry.value) std::move(entry.value).Run();
++  }
++  decode_audio_cancellations_.clear();
++#endif
+   // Now reject any pending decodeAudioData resolvers
+   for (auto& resolver : decode_audio_resolvers_) {
+     resolver->Reject(MakeGarbageCollected<DOMException>(
+@@ -901,6 +1002,9 @@
+   visitor->Trace(listener_);
+   visitor->Trace(pending_promise_resolvers_);
+   visitor->Trace(decode_audio_resolvers_);
++#if BUILDFLAG(IS_WIN)
++  visitor->Trace(decode_audio_cancellations_);
++#endif
+   visitor->Trace(periodic_wave_sine_);
+   visitor->Trace(periodic_wave_square_);
+   visitor->Trace(periodic_wave_sawtooth_);
+--- a/media/mojo/clients/BUILD.gn
++++ b/media/mojo/clients/BUILD.gn
+@@ -30,6 +30,9 @@
+     "//third_party/blink/renderer/modules/peerconnection",
+     "//third_party/blink/renderer/modules/webcodecs",
+     "//third_party/blink/renderer/platform",
++
++    # Windows AAC async reader lives in platform's media source set.
++    "//third_party/blink/renderer/platform/media:media_final",
+   ]
+ 
+   sources = [
+--- a/media/filters/audio_file_reader_unittest.cc
++++ b/media/filters/audio_file_reader_unittest.cc
+@@ -378,6 +378,7 @@
+ );
+ 
+ 
++#if BUILDFLAG(IS_WIN) && BUILDFLAG(USE_PROPRIETARY_CODECS)
+ namespace {
+ struct AsyncReaderCounts { int decodes = 0; int eos = 0; };
+ // Delayed callbacks model Mojo scheduling; this is not a PCM/codec test.
+@@ -468,4 +469,6 @@
+   EXPECT_EQ(counts.decodes, 0);
+ }
+ 
++#endif  // Windows proprietary-codec async prototype tests
++
+ }  // namespace media

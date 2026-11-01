@@ -1,0 +1,19 @@
+{
+  "status": "source_prepared_not_runtime_validated",
+  "chromium": "154.0.8037.98",
+  "anchor_view_id": "0x434d4401",
+  "required_enabled_feature": null,
+  "files": {
+    "chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc": {
+      "before_sha256": "377c47e8a556d09ca0527bae49efc3ef1e639838356e08c6abeb9d104f8045e9",
+      "after_sha256": "ef90d43ea6ac18c8ee6f4fbb2afe76fc31090b0473bbd4359496c6e6662c40ea"
+    },
+    "chrome/browser/ui/browser_command_controller.cc": {
+      "before_sha256": "6d93a808fa6577901a87023e99559dde2af551493cd4c0dbb6429a623e893234",
+      "after_sha256": "ca0f19ccedf04a16c91b5633101d01b616fa171a28d3bf6589ffb45d27ddddcd"
+    }
+  },
+  "cef_api_changed": false,
+  "scope": "Native complete bubble toggle via IDC_SHOW_DOWNLOADS at custom anchor; suppress flight; probe geometry only in smoke test",
+  "runtime_validated": false
+}

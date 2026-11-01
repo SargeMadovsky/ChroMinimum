@@ -1,0 +1,40 @@
+{
+  "scope": "Experimental async reader + lifecycle unit tests; no WebAudio caller wired",
+  "compiled": true,
+  "native_tests_executed": true,
+  "cef_relinked": false,
+  "files": {
+    "media/filters/audio_file_reader.h": {
+      "before_sha256": "90e150cbae60fd60bee644647a5cb9b8f6350b89aa60aba588867aa8bc611410",
+      "after_sha256": "1e34ec08762039641e79e27d69426817fe29bc02a1da23adc43f0d29cce61f66"
+    },
+    "media/filters/audio_file_reader.cc": {
+      "before_sha256": "feb8a3a1396833809113a31a09a566b122bf304e29910f97c16292483fd239cc",
+      "after_sha256": "18b549bd8b20fe57054f800e2ede5a41560d9a7be050edd98cc657af5750ae01"
+    },
+    "media/filters/audio_file_reader_unittest.cc": {
+      "before_sha256": "5efa1ca967991dbad063040af4c33540113175f39db695262837790acef83451",
+      "after_sha256": "5ae1670674dd01473e37cb8762f9e7ca3a1726fd53b1055853b2ef82a0e98383"
+    }
+  },
+  "standalone_probe": "tests/native/async_audio_file_reader_probe.cc",
+  "compiled_scope": "reader.obj and unittest.obj; CEF not relinked",
+  "compile_status": {
+    "exit_code": 0,
+    "log": "E:\\UnityProjects\\ChroMinimum\\.local\\webaudio-async-reader-20261029\\build.log",
+    "temporary_directory": "E:\\cm-platform154\\tmp",
+    "jobs": 6,
+    "output": "E:\\cm-platform154\\chromium\\src\\out\\Release_Platform_Codecs_Only_x64",
+    "worker_pid": 19500,
+    "finished_utc": "2026-10-29T16:28:57.4712342Z",
+    "source": "E:\\cm-platform154\\chromium\\src",
+    "status": "completed",
+    "started_utc": "2026-10-29T16:18:57.6387911Z"
+  },
+  "native_test_target": "//cef:chrominimum_async_reader_probe",
+  "native_test_status_path": ".local/webaudio-async-reader-20261029/native-run-status.json",
+  "native_probe_sha256": "9fd7d9517db5a78ca7779ccf677ac169f02017ed420c02d363796702ec89ee24",
+  "native_gn_before_sha256": "a2205b79c7acbc19385a5ac60e00747080393bf0fd35055ec94bc04304e5b8c5",
+  "native_cases_passed": 4,
+  "native_result": "docs/reports/webaudio-async-reader-20261029/summary.json"
+}
