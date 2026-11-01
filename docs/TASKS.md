@@ -491,3 +491,5 @@
 - [x] Alpha.8 опубликована в GitHub по разрешению владельца: полный setup, SHA256SUMS, лицензии и source materials. RU/EN описание сайта обновлено (website commit 194d8e4). [Публикация](RELEASE_PUBLICATION_20261101.md).
 
 - [x] Сохранено обновление README screenshot из GitHub commit 2bbab9b (2026-10-21); сайт хранится в отдельном репозитории.
+
+- [x] Исправлено Rust-форматирование после публикации alpha.8; cargo fmt --all --check локально проходит. Повтор GitHub Actions запущен отправкой исправления.

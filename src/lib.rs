@@ -5,8 +5,8 @@
 mod mac;
 
 mod external_protocol;
-mod window_state;
 mod toolbar_style;
+mod window_state;
 
 #[cfg(target_os = "windows")]
 mod core_updates;
@@ -287,21 +287,9 @@ fn toolbar(nav: &Nav) -> Option<Panel> {
     }))?;
     let mut buttons = Vec::new();
     for (label, action, icon) in [
-        (
-            "Назад",
-            1,
-            toolbar_style::Icon::Back,
-        ),
-        (
-            "Вперёд",
-            2,
-            toolbar_style::Icon::Forward,
-        ),
-        (
-            "Обновить",
-            3,
-            toolbar_style::Icon::Reload,
-        ),
+        ("Назад", 1, toolbar_style::Icon::Back),
+        ("Вперёд", 2, toolbar_style::Icon::Forward),
+        ("Обновить", 3, toolbar_style::Icon::Reload),
     ] {
         let mut delegate = NavigationButton::new(nav.clone(), action);
         let button = label_button_create(Some(&mut delegate), Some(&CefString::from("")))?;
