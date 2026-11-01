@@ -489,3 +489,5 @@
   [Отчёт](reports/downloads-branding-20261101/summary.json).
 
 - [ ] Публикация alpha.8 (2026-11-01) разрешена владельцем: подготовлены полный setup, source materials и RU/EN описание сайта; проверяется доставка в GitHub/Pages.
+
+- [x] Сохранено обновление README screenshot из GitHub commit 2bbab9b (2026-10-21); сайт хранится в отдельном репозитории.
