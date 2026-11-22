@@ -118,8 +118,8 @@ def main():
     p.add_argument('--require-platform-aac', action='store_true')
     a = p.parse_args()
     if a.previous_installer:
-        assert a.previous_installer.name == 'ChroMinimum-0.0.1-alpha.7-test-setup-x64.exe'
-    assert a.installer.name == 'ChroMinimum-0.0.1-alpha.8-test-setup-x64.exe', 'Only the current TestInstall build is accepted'
+        assert a.previous_installer.name == 'ChroMinimum-0.0.1-alpha.8-test-setup-x64.exe'
+    assert a.installer.name == 'ChroMinimum-0.0.1-alpha.9-test-setup-x64.exe', 'Only the current TestInstall build is accepted'
     assert read_values(fr'Software\{KEY}\Capabilities') is None, 'Existing test registration must not be overwritten'
     assert read_values(fr'Software\Classes\{KEY}.HTML') is None
     assert read_values(r'Software\Classes\Applications\chrominimum-installer-test.exe') is None
