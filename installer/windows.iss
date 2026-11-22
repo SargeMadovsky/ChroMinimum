@@ -103,6 +103,10 @@ Root: HKCU; Subkey: "Software\Classes\Applications\{#ApplicationKey}\SupportedTy
 Root: HKCU; Subkey: "Software\Classes\.html\OpenWithProgids"; ValueType: none; ValueName: "{#ProductKey}.HTML"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Classes\.htm\OpenWithProgids"; ValueType: none; ValueName: "{#ProductKey}.HTML"; Flags: uninsdeletevalue uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: none; ValueName: "{#ProductKey}.PDF"; Flags: uninsdeletevalue uninsdeletekeyifempty
+; Opt-in login prewarm (D045) is created by the browser menu, never by setup;
+; uninstall removes it and its Task Manager startup state.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "ChroMinimum Prewarm"; Flags: uninsdeletevalue dontcreatekey
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"; ValueType: none; ValueName: "ChroMinimum Prewarm"; Flags: uninsdeletevalue dontcreatekey
 
 [Run]
 Filename: "{app}\{#ApplicationKey}"; Description: "Launch ChroMinimum / Запустить ChroMinimum"; Flags: postinstall nowait skipifsilent unchecked

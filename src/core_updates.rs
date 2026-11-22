@@ -17,6 +17,8 @@ static POSTING: Mutex<bool> = Mutex::new(false);
 static BUSY: AtomicBool = AtomicBool::new(false);
 static HEALTHY: AtomicBool = AtomicBool::new(false);
 static MENU_LABEL: Mutex<&str> = Mutex::new("Проверить обновления ядра");
+static STATUS_HINT: Mutex<&str> = Mutex::new("");
+static STATUS_ENABLED: AtomicBool = AtomicBool::new(false);
 
 pub fn runtime_lease() -> std::io::Result<Option<std::fs::File>> {
     if CONTEXT.get().is_none() && std::env::var_os("CHROMINIMUM_LAUNCHER").is_none() {
@@ -64,14 +66,16 @@ pub fn initialize(smoke: bool) {
         }
     }
 }
+fn unavailable_label() -> &'static str {
+    if std::env::var_os("CHROMINIMUM_COMPONENT_ID").is_some() {
+        "Обновления этой установки пока недоступны"
+    } else {
+        "Для обновлений запустите браузер через загрузчик ChroMinimum"
+    }
+}
 pub fn menu_model(model: MenuModel) {
     if CONTEXT.get().is_none() {
-        let label = if std::env::var_os("CHROMINIMUM_COMPONENT_ID").is_some() {
-            "Обновления этой установки пока недоступны"
-        } else {
-            "Для обновлений запустите браузер через загрузчик ChroMinimum"
-        };
-        model.set_label(1, Some(&CefString::from(label)));
+        model.set_label(1, Some(&CefString::from(unavailable_label())));
         model.set_enabled(1, 0);
     } else {
         model.set_enabled(1, i32::from(!BUSY.load(Ordering::Relaxed)));
@@ -111,16 +115,37 @@ fn status(code: &str) {
     post_task(ThreadId::UI, Some(&mut task));
 }
 fn set_menu_label(label: &'static str, enabled: bool) {
+    set_status(label, "", enabled);
+}
+fn set_status(label: &'static str, hint: &'static str, enabled: bool) {
     *MENU_LABEL.lock().unwrap() = label;
+    *STATUS_HINT.lock().unwrap() = hint;
+    STATUS_ENABLED.store(enabled, Ordering::Relaxed);
     MENU_MODEL.with(|slot| {
         if let Some(model) = slot.borrow().as_ref() {
             model.set_label(1, Some(&CefString::from(label)));
             model.set_enabled(1, i32::from(enabled));
         }
     });
+    super::settings_page::notify_state();
+}
+/// The launcher that started this core, if any (the login prewarm target).
+pub fn launcher() -> Option<&'static std::path::Path> {
+    CONTEXT.get().map(|(launcher, _)| launcher.as_path())
 }
 pub fn current_menu_label() -> &'static str {
     *MENU_LABEL.lock().unwrap()
+}
+/// Label, explanation and whether "check now" is possible, for the settings page.
+pub fn settings_state() -> (&'static str, &'static str, bool) {
+    if CONTEXT.get().is_none() {
+        return (unavailable_label(), "", false);
+    }
+    (
+        current_menu_label(),
+        *STATUS_HINT.lock().unwrap(),
+        STATUS_ENABLED.load(Ordering::Relaxed),
+    )
 }
 pub fn check() {
     if !*POSTING.lock().unwrap() {
@@ -182,8 +207,7 @@ wrap_task! {
                 "error" => ("Проверить ещё раз", "Не удалось проверить обновления. Возможно, нет сети, канал недоступен или проверка подписи не пройдена. Текущее ядро не заменено", false),
                 _ => return,
             };
-            let _ = tooltip;
-            set_menu_label(label, !busy);
+            set_status(label, tooltip, !busy);
         }
     }
 }

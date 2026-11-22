@@ -5,8 +5,15 @@ use std::{
     io::{Read, Write},
     path::Path,
     process::{Command, Stdio},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+/// Wall-clock microseconds for smoke startup marks (see the core's smoke.log).
+fn unix_micros() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |time| time.as_micros())
+}
 
 fn main() {
     if let Err(error) = run() {
@@ -27,6 +34,7 @@ fn main() {
                 "--smoke-test",
                 "--installer-preflight",
                 "--migrate-installation",
+                "--prewarm",
             ]
             .contains(&a.as_str())
         }) {
@@ -46,6 +54,7 @@ fn main() {
 }
 
 fn run() -> Result<()> {
+    let launcher_start = unix_micros();
     let args: Vec<_> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--installer-preflight") {
         if args.len() != 3 {
@@ -203,6 +212,9 @@ fn run() -> Result<()> {
     if args.first().map(String::as_str) == Some("--check") {
         return check(root, &key);
     }
+    if args.first().map(String::as_str) == Some("--prewarm") {
+        return prewarm(root);
+    }
     let browser_args = open_target::browser_args(&args)?;
     let installation = root.join("installation.json");
     let installed_config = if installation.exists() {
@@ -220,6 +232,7 @@ fn run() -> Result<()> {
     };
     let guard = lock(root)?;
     let selected = select_locked(root, &key)?;
+    let launcher_selected = unix_micros();
     let runtime = version_dir(root, selected);
     let runtime_lease = lease(&runtime)?;
     drop(guard);
@@ -251,6 +264,18 @@ fn run() -> Result<()> {
     } else {
         command.env_remove("CHROMINIMUM_INSTALL_LOCALE");
     }
+    // Test-only timing handed to the core, which writes it to the smoke log.
+    if args.iter().any(|a| a == "--smoke-test") {
+        command.env(
+            "CHROMINIMUM_TEST_LAUNCH_MARKS",
+            format!(
+                "launcher_start={launcher_start},launcher_selected={launcher_selected},launcher_spawn={}",
+                unix_micros()
+            ),
+        );
+    } else {
+        command.env_remove("CHROMINIMUM_TEST_LAUNCH_MARKS");
+    }
     // No idle launcher process. Only a bounded smoke test waits for its child.
     if args.iter().any(|a| a == "--smoke-test") && !args.iter().any(|a| a == "--launcher-no-wait") {
         let status = command.status()?;
@@ -271,6 +296,51 @@ fn run() -> Result<()> {
     }
     let _ = fs::remove_file(started);
     drop(runtime_lease);
+    Ok(())
+}
+
+/// Opt-in login prewarm (HKCU Run, toggled from the browser menu): reads the
+/// files a launch loads into the OS file cache and exits. Read-only: no lock, no
+/// state change, no core process, no profile, no network.
+fn prewarm(root: &Path) -> Result<()> {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Threading::*;
+        // Low CPU and I/O priority so login is not slowed, but normal memory
+        // priority: pages read at background priority are evicted first.
+        let thread = GetCurrentThread();
+        SetThreadPriority(thread, THREAD_MODE_BACKGROUND_BEGIN);
+        let normal = MEMORY_PRIORITY_INFORMATION {
+            MemoryPriority: MEMORY_PRIORITY_NORMAL,
+        };
+        SetThreadInformation(
+            thread,
+            ThreadMemoryPriority,
+            (&raw const normal).cast(),
+            size_of::<MEMORY_PRIORITY_INFORMATION>() as u32,
+        );
+    }
+    // The core the next launch most likely selects; select_locked would
+    // consume a pending update's attempt, so only read the state.
+    let state = read_state(root)?;
+    let runtime = version_dir(root, state.pending.unwrap_or(state.active));
+    let mut files: Vec<_> = fs::read_dir(&runtime)?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("dll" | "exe" | "pak" | "dat" | "bin")
+            )
+        })
+        .collect();
+    files.sort();
+    files.extend(["en-US.pak", "ru.pak"].map(|name| runtime.join("locales").join(name)));
+    let mut buffer = vec![0; 1 << 20];
+    for path in files {
+        if let Ok(mut file) = fs::File::open(path) {
+            while matches!(file.read(&mut buffer), Ok(read) if read > 0) {}
+        }
+    }
     Ok(())
 }
 

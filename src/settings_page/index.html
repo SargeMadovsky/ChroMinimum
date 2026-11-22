@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Настройки</title>
+<link rel="stylesheet" href="settings.css">
+<script src="settings.js" defer></script>
+</head>
+<body>
+<main>
+  <h1>Настройки</h1>
+
+  <section aria-labelledby="shell-title">
+    <h2 id="shell-title">ChroMinimum</h2>
+    <p class="note">Настройки оболочки. Их хранит и применяет ChroMinimum.</p>
+
+    <div class="group">
+      <h3>Запуск</h3>
+      <div class="row">
+        <label class="text" for="prewarm">
+          <span>Ускорять первый запуск после входа в Windows</span>
+          <span class="hint" id="prewarm-hint">После входа в Windows загрузчик один раз читает файлы ядра с диска с низким приоритетом и завершается. Окно не открывается, сеть и профиль не используются.</span>
+        </label>
+        <input type="checkbox" id="prewarm" switch role="switch" aria-describedby="prewarm-hint prewarm-unavailable" disabled>
+      </div>
+      <p class="hint" id="prewarm-unavailable" hidden>Доступно в Windows, когда браузер запущен через загрузчик ChroMinimum.</p>
+    </div>
+
+    <div class="group">
+      <h3>Обновления ядра</h3>
+      <div class="row">
+        <p class="text">
+          <span id="updates-label">…</span>
+          <span class="hint" id="updates-hint"></span>
+        </p>
+        <button type="button" id="updates-check" disabled>Проверить сейчас</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>О программе</h3>
+      <p class="text">
+        <span>ChroMinimum <span id="version"></span></span>
+        <span class="hint">CEF <span id="engine"></span></span>
+      </p>
+    </div>
+  </section>
+
+  <section aria-labelledby="engine-title">
+    <h2 id="engine-title">Движок Chromium</h2>
+    <p class="note">Эти настройки хранит и применяет движок Chromium. Страница откроется в этом окне; кнопка «Назад» вернёт сюда.</p>
+    <ul class="links">
+      <li><button type="button" data-target="passwords">Пароли</button></li>
+      <li><button type="button" data-target="content">Данные сайтов и разрешения</button></li>
+      <li><button type="button" data-target="clear">Удалить данные о просмотре</button></li>
+      <li><button type="button" data-target="privacy">Конфиденциальность и безопасность</button></li>
+      <li><button type="button" data-target="downloads">Загрузки</button></li>
+      <li><button type="button" data-target="languages">Языки и проверка правописания</button></li>
+      <li><button type="button" data-target="fonts">Шрифты</button></li>
+      <li><button type="button" data-target="appearance">Оформление и масштаб страниц</button></li>
+      <li><button type="button" data-target="certificates">Сертификаты</button></li>
+    </ul>
+  </section>
+
+  <p id="status" role="status"></p>
+</main>
+</body>
+</html>

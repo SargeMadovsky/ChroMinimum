@@ -1,0 +1,88 @@
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f4f5f7, #1f2023);
+  --panel: light-dark(#ffffff, #2a2b2f);
+  --text: light-dark(#1d1e21, #e8e9ec);
+  --muted: light-dark(#5b5f66, #a6aab2);
+  --line: light-dark(#dcdfe4, #3c3e44);
+  --accent: light-dark(#1769e0, #7fb0ff);
+  --focus: light-dark(#b34700, #ffb070);
+  accent-color: var(--accent);
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+}
+
+body { margin: 0; }
+
+main {
+  max-inline-size: 46rem;
+  margin-inline: auto;
+  padding: 20px 24px 32px;
+}
+
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 16px; }
+h2 { font-size: 16px; font-weight: 600; margin: 0; }
+h3 { font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--muted); }
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px 18px;
+  margin-block-end: 16px;
+}
+
+.note { color: var(--muted); margin: 2px 0 12px; }
+
+.group { padding-block: 10px; border-block-start: 1px solid var(--line); }
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.text { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.hint { color: var(--muted); font-size: 12.5px; }
+p.hint { margin: 6px 0 0; }
+
+button {
+  font: inherit;
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  flex: none;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { cursor: default; opacity: 0.55; }
+
+input[type="checkbox"] {
+  inline-size: 18px;
+  block-size: 18px;
+  margin: 0;
+  flex: none;
+  cursor: pointer;
+}
+input:disabled { cursor: default; }
+
+:is(button, input):focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 8px;
+}
+.links button { inline-size: 100%; text-align: start; padding-block: 8px; }
+
+#status { min-block-size: 1.45em; margin: 0; color: var(--muted); }

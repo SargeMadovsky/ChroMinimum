@@ -37,6 +37,8 @@ pub fn is_external(url: &str) -> bool {
         "chrome-search",
         "chrome-distiller",
         "isolated-app",
+        // Our own scheme, served in-process (D046); never an OS handler.
+        "chrominimum",
     ]
     .iter()
     .any(|s| scheme.eq_ignore_ascii_case(s))
@@ -105,6 +107,7 @@ mod tests {
             "JaVaScRiPt:alert(1)",
             "file:///C:/test",
             "chrome://settings",
+            "ChroMinimum://settings/",
             "data:text/plain,x",
             "blob:https://example.invalid/x",
             "x:\nmalformed",

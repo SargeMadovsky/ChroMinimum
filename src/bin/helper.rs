@@ -8,9 +8,11 @@ fn main() {
         library_loader::LibraryLoader::new(&std::env::current_exe().expect("executable"), true);
     assert!(loader.load(), "Cannot load bundled CEF framework");
     let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);
+    // Registers chrominimum:// in this child process too (D046).
+    let mut app = chrominimum::subprocess_app();
     let code = execute_process(
         Some(args.as_main_args()),
-        None::<&mut App>,
+        Some(&mut app),
         std::ptr::null_mut(),
     );
     // Let the framework loader and sandbox context tear down normally.
