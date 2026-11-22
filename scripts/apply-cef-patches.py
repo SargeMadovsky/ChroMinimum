@@ -52,12 +52,15 @@ def main():
                         help='Apply the separate experimental Windows platform AAC patch')
     parser.add_argument('--download-ui', action='store_true',
                         help='Apply the optional native download bubble anchor patch (requires a core rebuild)')
+    parser.add_argument('--native-security-ui', action='store_true',
+                        help='Apply native PageInfo integration after the download anchor patch')
     args = parser.parse_args()
-    if sum((args.verify_unpatched, args.build_fixes, args.runtime_fixes, args.platform_aac, args.download_ui)) > 1:
+    if sum((args.verify_unpatched, args.build_fixes, args.runtime_fixes, args.platform_aac, args.download_ui, args.native_security_ui)) > 1:
         parser.error('Select only one patch/verification mode')
     src = args.chromium_src.resolve(strict=True)
     project = Path(__file__).resolve().parents[1]
-    metadata = project / ('patches/chromium/0005-download-bubble-anchor.json'
+    metadata = project / ('patches/chromium/0016-native-security-page.json'
+                          if args.native_security_ui else 'patches/chromium/0005-download-bubble-anchor.json'
                           if args.download_ui else 'patches/chromium/0004-windows-platform-aac.json'
                           if args.platform_aac else 'patches/chromium/0003-instance-tracer-untrace-reentrancy.json'
                           if args.runtime_fixes else 'patches/chromium/0002-deterministic-midl-name-hash.json'
@@ -71,6 +74,9 @@ def main():
         raise ValueError(f'Chromium {actual_version} needs a reviewed patch; expected {policy["chromium"]}')
     if args.platform_aac:
         apply_platform_aac(src, policy, patch)
+        return
+    if args.native_security_ui:
+        apply_platform_aac(src, policy, patch, 'native_security_ui_patch_applied_not_runtime_validation')
         return
     if args.download_ui:
         apply_platform_aac(src, policy, patch, 'download_ui_patch_applied_not_runtime_validation')

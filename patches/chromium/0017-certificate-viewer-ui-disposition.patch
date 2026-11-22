@@ -1,0 +1,14 @@
+--- a/chrome/browser/ui/webui/certificate_viewer/certificate_viewer_ui.h
++++ b/chrome/browser/ui/webui/certificate_viewer/certificate_viewer_ui.h
+@@ -29,6 +29,11 @@
+   CertificateViewerUI& operator=(const CertificateViewerUI&) = delete;
+ 
+   ~CertificateViewerUI() override;
++
++  // This viewer is a browser UI dialog, not a standalone browser page.
++  DisplayDisposition GetDisplayDisposition() const override {
++    return DisplayDisposition::kUIElement;
++  }
+ };
+ 
+ #endif  // CHROME_BROWSER_UI_WEBUI_CERTIFICATE_VIEWER_CERTIFICATE_VIEWER_UI_H_

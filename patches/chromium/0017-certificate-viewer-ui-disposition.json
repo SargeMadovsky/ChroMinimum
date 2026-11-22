@@ -1,0 +1,15 @@
+{
+  "chromium": "154.0.8037.98",
+  "requires": "0016-native-security-page",
+  "files": {
+    "chrome/browser/ui/webui/certificate_viewer/certificate_viewer_ui.h": {
+      "before_sha256": "8eb3614669129732d1838215b64ee88fc77850705920fe8ec181d00cc294e71a",
+      "after_sha256": "cca4a068615c2967eaec4ed17a3e7d47d5be1ec67c8cbffa5d8dc7373aaa879b"
+    }
+  },
+  "cef_api_changed": false,
+  "runtime_validated": true,
+  "scope": "Classify only CertificateViewerUI as kUIElement; preserve existing CEF exclusion guard for CefBrowser-owned WebUI, TLS and global timeout",
+  "status": "Isolated core-viewer-v3 compiled/linked; viewer x3 + SSL RU x8 + TLS/sandbox validated",
+  "report": "docs/reports/certificate-viewer-20261103/summary.json"
+}

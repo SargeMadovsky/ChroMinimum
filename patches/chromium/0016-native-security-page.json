@@ -1,0 +1,15 @@
+{
+  "chromium": "154.0.8037.98",
+  "requires": "0005-download-bubble-anchor",
+  "files": {
+    "chrome/browser/ui/browser_command_controller.cc": {
+      "before_sha256": "ca0f19ccedf04a16c91b5633101d01b616fa171a28d3bf6589ffb45d27ddddcd",
+      "after_sha256": "b2f673c2c31a3457ef0426598d3d31f46a8a2bd91652b87ed244999cb8dc00b9"
+    }
+  },
+  "cef_api_changed": false,
+  "runtime_validated": true,
+  "scope": "Private native command anchored to ChroMinimum button; stock PageInfo security subpage; no TLS changes",
+  "validation_scope": "8 EN + 8 RU PageInfo/SSL cases, rejected TLS, source/link preservation, media/download/protocol/fullscreen regression; physical/DPI/viewer activation pending",
+  "report": "docs/reports/native-security-20261103/summary.json"
+}
