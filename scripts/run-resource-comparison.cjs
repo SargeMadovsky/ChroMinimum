@@ -156,7 +156,7 @@ async function main(){
  const mode=process.argv[2]||'--preflight-only';if(!['--preflight-only','--pilot','--suite'].includes(mode))throw Error('Select --preflight-only, --pilot or --suite');
  const addon=path.resolve(__dirname,'..'),manifest=JSON.parse(fs.readFileSync(path.join(addon,'resource-kit-manifest.json')));
  for(const [name,hash] of Object.entries(manifest.files)){const file=path.resolve(addon,name);if(!file.startsWith(addon+path.sep)||hashFile(file)!==hash)throw Error('Resource kit hash mismatch: '+name);}
- const kit=path.resolve(__dirname,'../../comparison-kit-20261024');
+ const kit=path.resolve(__dirname,'../../'+(manifest.kitDirectory||'comparison-kit-20261024'));
  if(hashFile(path.join(kit,'kit-manifest.json'))!==manifest.browserKitManifestSha256)throw Error('Browser kit manifest changed');
  console.log('Checking sealed browser kit…');verifyKit(kit);const inputs=loadInputs(path.join(kit,'scripts/browser-comparison.config.json'));
  const root=path.resolve(__dirname,'..'),out=path.join(root,'reports',new Date().toISOString().replace(/[:.]/g,'-'));fs.mkdirSync(out,{recursive:true});
