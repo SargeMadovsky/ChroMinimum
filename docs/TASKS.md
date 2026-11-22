@@ -1,5 +1,92 @@
 # Очередь работ
 
+- [x] 2026-11-03: задержка viewer сопоставлена с CEF GetNewBrowserInfo timeout:
+  два открытия, timeout через2021/2028мс от invoke, DOM сразу после него.
+  Подготовлен patch0017 (CertificateViewerUI=kUIElement), hash manifest и
+  git apply --check прошли; ядро не менялось, runtime эффект не проверен.
+- [x] D043/0017: compile exit0 за82,53с, link exit0 за67мин32с.
+  После исправления AppContainer RX упаковки: viewer91/76/69мс вместо~2060мс,
+  timeout отсутствует, Details/close/reopen×3, RU SSL8/TLS0HTTP и sandbox прошли.
+  Из26runtime-файлов изменён только libcef.dll, размер DLL прежний.
+  [Результат и ручной кандидат](NATIVE_SSL_PANEL.md#кандидат0017--результат-проверки).
+- [ ] D043/0017: ручная physical/DPI/live-theme приёмка кандидата;
+  installer/installed regression и расширенная media/download/protocol матрица.
+
+- [x] 2026-11-03: synthetic cross-site cookies: localhost → 127.0.0.1,
+  Sec-Fetch-Site=cross-site; Lax разрешён на GET и отсутствует на POST,
+  Strict отсутствует на обоих и доступен same-origin. Повторены persistence/
+  HttpOnly/Path/expiry, два clean exit0. Исправлена гонка about:blank в стенде.
+  HTTPS Secure/None и third-party iframe требуют отдельной проверки.
+  [Подробности](NATIVE_SSL_PANEL.md#samesite-cross-site-getpost).
+
+- [x] 2026-11-03: viewer проверен через Accessibility/CDP на пустых профилях: поля,
+  Подробнее, три закрытия без закрытия браузера, повторное открытие, native Back,
+  cookies/Back и отдельная страница site settings. Первое открытие WebUI
+  2055,6/2076,1мс, повторное2109,4мс. Меню/оформление не менялись.
+- [x] 2026-11-03: first-party cookies проверены локальным HTTP fixture: JS/HTTP,
+  HttpOnly, Path, Max-Age=0 и постоянные cookies после чистого перезапуска;
+  сессионная cookie исчезла. Два exit0/shutdown_complete. Надпись «Запрещено всем
+  сайтам» — RU ветка нулевого allowed_sites_count в Chromium, не глобальная политика.
+  Secure/cross-site/third-party policy и живой счётчик UI отдельно не проверены.
+  [Результаты и границы](NATIVE_SSL_PANEL.md#проверка-viewer-и-переходов-2026-11-03).
+
+- [x] 2026-11-03: владелец подтвердил native SSL («Работает»), показал открытый
+  viewer сертификата и полный PageInfo через Back. Зафиксированы светлое
+  содержимое viewer и субъективная задержка; последующий замер приведён выше.
+- [ ] D043: определить границы PageInfo в Windows MVP (предложено скрыть Back,
+  оставив SSL/status/сертификат); проверить оформление ресурсов viewer.
+  Первое/повторное открытие WebUI измерено малой серией, причина задержки не установлена. Решение об изменении пока не принято.
+  [Отзыв и исходники](NATIVE_SSL_PANEL.md#ручной-отзыв-владельца-2026-11-03).
+
+- [x] D043,2026-11-03: штатная PageInfo/SSL панель собрана изолированно.
+  C++ compile/archive/link exit0 (link66мин43с);16 Rust tests/Release/Clippy,
+  native8EN+8RU/TLS, sandbox, MP4/WebM EOF/AAC PCM, downloads3case,
+  protocols19/19 и fullscreen2цикла прошли. Только core/adapter изменены.
+  Менеджер паролей и основная установка не менялись.
+  [Результат и границы](NATIVE_SSL_PANEL.md).
+- [ ] D043: ручные внешний вид/DPI/live theme/физические крестик/Escape и
+  viewer сертификата; затем installer/seed и installed regression.
+  PageInfo back/help/cookies/permissions отдельно не приняты.
+
+- [x] 2026-11-02: сверены pinned PageInfoBubbleView/OpenSecurityPage и штатный
+  просмотр сертификата. По предпочтению владельца выбран прототип штатной SSL
+  панели, а не копия оформления загрузок. [Решение D043](DECISIONS.md#d043--штатная-pageinfossl-панель-вместо-собственного-оформления-2026-11-02).
+- [x] D043: ограниченная C++ интеграция и оценка/сборка завершены;
+  программная приёмка и оставшиеся ручные ограничения — в NATIVE_SSL_PANEL.md.
+
+- [x] 2026-11-02: владелец принял closefix («теперь всё ок»). По просьбе убрать
+  синюю обводку начальный фокус перенесён с крестика на native контейнер;
+  Tab-focus крестика сохранён. Release/Clippy и7-case серия с проверкой
+  panel.has_focus=1/close.has_focus=0 прошли. Отдельный focusfix-кандидат.
+  [Статус и направление оформления](CONNECTION_SECURITY_INDICATOR.md#фокус-крестика-и-оформление-по-образцу-загрузок).
+
+- [x] 2026-11-02: после сообщения владельца о закрытии браузера по крестику
+  устранено синхронное уничтожение overlay из callback. Общий dismiss сразу
+  скрывает панель, Destroy выполняется следующей UI task. Release/Clippy,
+  16 Rust tests и7-case серия с проверкой продолжения работы браузера прошли.
+  Отдельный closefix-кандидат; физический клик пока не принят. Внешний вид
+  не менялся, для штатного Chromium PageInfo нужна отдельная C++ интеграция.
+  [Детали](CONNECTION_SECURITY_INDICATOR.md#отзыв-владельца-и-исправление-закрытия).
+
+- [x] 2026-11-02: по дополнительному запросу владельца добавлена native панель
+  соединения по нажатию на индикатор: заголовок, пояснение, значок и крестик.
+  Проверка сертификатов CEF не менялась. Release/Clippy,16 Rust tests и7-case
+  native overlay/TLS серия прошли; закрытие, повторное открытие, навигация и
+  shutdown проверены программно. Отдельный кандидат, без замены установки.
+  [Результат и ограничения](CONNECTION_SECURITY_INDICATOR.md#панель-по-нажатию--последующее-уточнение-2-ноября).
+- [ ] Визуальная приёмка панели соединения: физический клик/Escape, DPI и тема;
+  перед поставкой — новый setup/seed и installed regression.
+
+- [x] 2026-11-02: по выбору владельца перед обновлениями добавлен native индикатор
+  сертификата/соединения. Release/Clippy,16 Rust tests,7 переходов HTTP/HTTPS/file/
+  redirect/invalid TLS/recovery, отказ HTTP при плохом сертификате и sandbox-токены
+  прошли. Отдельный кандидат, основная установка и публичная alpha.8 не менялись.
+  [Результат, расходы и ограничения](CONNECTION_SECURITY_INDICATOR.md).
+- [ ] Визуальная/DPI/live-theme приёмка индикатора сертификата; новый setup/seed
+  и installed-приёмка перед поставкой. Динамический mixed content вне load events
+  не заявляется полностью отслеживаемым. Затем — сквозная проверка обновлений
+  финального system-codecs ядра на изолированной установке.
+
 - [x] 2026-11-01: собран и программно проверен native download bubble: 0005 расширен привязкой к
   собственной кнопке, отключением flight animation и вызовом штатной complete
   мини-панели через IDC_SHOW_DOWNLOADS. Два C++ файла и Rust собраны; изолированная
