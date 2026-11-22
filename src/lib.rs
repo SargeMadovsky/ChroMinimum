@@ -4,7 +4,9 @@
 #[cfg(target_os = "macos")]
 mod mac;
 
+mod connection_security;
 mod external_protocol;
+mod security_panel;
 mod toolbar_style;
 mod window_state;
 
@@ -117,6 +119,10 @@ struct Navigation {
     active_downloads: std::collections::BTreeSet<u32>,
     browser: Option<Browser>,
     address: Option<Textfield>,
+    security_indicator: Option<LabelButton>,
+    security: connection_security::State,
+    security_failed: bool,
+    security_pending: bool,
     back: Option<LabelButton>,
     forward: Option<LabelButton>,
     reload: Option<LabelButton>,
@@ -252,6 +258,7 @@ impl NavigationButton {
 wrap_textfield_delegate! {
     struct AddressInput { nav: Nav }
     impl ViewDelegate {
+        fn on_focus(&self, _view: Option<&mut View>) { }
         fn preferred_size(&self, _view: Option<&mut View>) -> Size { Size { width: 400, height: 32 } }
     }
     impl TextfieldDelegate {
@@ -272,6 +279,41 @@ wrap_panel_delegate! {
         fn preferred_size(&self, _view: Option<&mut View>) -> Size { Size { width: 600, height: 44 } }
     }
     impl PanelDelegate {}
+}
+
+fn show_security(nav: &Nav, security: connection_security::State) {
+    let button = {
+        let mut state = nav.borrow_mut();
+        if state.security == security {
+            return;
+        }
+        state.security = security;
+        state.security_indicator.clone()
+    };
+    if let Some(button) = button {
+        connection_security::paint(&button, security);
+    }
+    smoke_event(&format!("connection_security={security:?}"));
+}
+
+fn refresh_security(nav: &Nav, browser: Option<&Browser>) {
+    if !nav.borrow().security_failed && !nav.borrow().security_pending {
+        show_security(nav, connection_security::read(browser));
+    }
+}
+
+wrap_button_delegate! {
+    struct SecurityIndicator { nav: Nav }
+    impl ViewDelegate {
+        fn on_theme_changed(&self, view: Option<&mut View>) {
+            if let Some(button) = view.and_then(|v| v.as_button()).and_then(|b| b.as_label_button()) {
+                connection_security::paint(&button, self.nav.borrow().security);
+            }
+        }
+    }
+    impl ButtonDelegate {
+        fn on_button_pressed(&self, _button: Option<&mut Button>) { security_panel::toggle(&self.nav); }
+    }
 }
 
 fn toolbar(nav: &Nav) -> Option<Panel> {
@@ -306,6 +348,18 @@ fn toolbar(nav: &Nav) -> Option<Panel> {
     }
     buttons[0].set_enabled(0);
     buttons[1].set_enabled(0);
+    let mut security_delegate = SecurityIndicator::new(nav.clone());
+    let security_indicator =
+        label_button_create(Some(&mut security_delegate), Some(&CefString::from("")))?;
+    security_indicator.set_id(security_panel::ANCHOR_VIEW_ID);
+    security_indicator.set_focusable(1);
+    security_indicator.set_minimum_size(Some(&Size {
+        width: 28,
+        height: 32,
+    }));
+    connection_security::paint(&security_indicator, connection_security::State::Unknown);
+    let mut security_view = View::from(&security_indicator);
+    panel.add_child_view(Some(&mut security_view));
     let mut delegate = AddressInput::new(nav.clone());
     let field = textfield_create(Some(&mut delegate))?;
     field.set_placeholder_text(Some(&CefString::from(
@@ -344,6 +398,7 @@ fn toolbar(nav: &Nav) -> Option<Panel> {
     state.forward = Some(buttons.remove(0));
     state.reload = Some(buttons.remove(0));
     state.address = Some(field);
+    state.security_indicator = Some(security_indicator);
     state.downloads = Some(download_button);
     state.menu = Some(menu_button);
     Some(panel)
@@ -774,6 +829,10 @@ wrap_app! {
                     command.append_switch(Some(&CefString::from("smoke-test")));
                     command.append_switch(Some(&CefString::from("test-chrome-downloads")));
                 }
+                if self.smoke && std::env::args().any(|arg| arg == "--test-native-security-panel") {
+                    command.append_switch(Some(&CefString::from("smoke-test")));
+                    command.append_switch(Some(&CefString::from("test-native-security-panel")));
+                }
                 // Chromium 154 ExternalProviderImpl returns before registry and
                 // bundled-extension providers. Do not globally disable extensions;
                 // do not disable the separate security component updater.
@@ -1004,7 +1063,7 @@ wrap_window_delegate! {
         fn on_window_destroyed(&self, _window: Option<&mut Window>) {
             self.page.borrow_mut().take();
             let mut nav = self.nav.borrow_mut();
-            nav.address = None; nav.back = None; nav.forward = None; nav.reload = None; nav.menu = None;
+            nav.security_indicator = None; nav.address = None; nav.back = None; nav.forward = None; nav.reload = None; nav.menu = None;
             nav.downloads = None;
         }
         fn on_accelerator(&self, _window: Option<&mut Window>, command_id: i32) -> i32 {
@@ -1036,7 +1095,7 @@ wrap_client! {
         fn download_handler(&self) -> Option<DownloadHandler> { Some(DownloadAppearance::new(self.nav.clone())) }
         fn command_handler(&self) -> Option<CommandHandler> { Some(SinglePageCommands::new()) }
         fn display_handler(&self) -> Option<DisplayHandler> { Some(PageTitle::new(self.nav.clone())) }
-        fn request_handler(&self) -> Option<RequestHandler> { Some(SinglePageLinks::new()) }
+        fn request_handler(&self) -> Option<RequestHandler> { Some(SinglePageLinks::new(self.nav.clone())) }
     }
 }
 
@@ -1073,10 +1132,18 @@ wrap_download_handler! {
 wrap_display_handler! {
     struct PageTitle { nav: Nav }
     impl DisplayHandler {
-        fn on_address_change(&self, _browser: Option<&mut Browser>, frame: Option<&mut Frame>, url: Option<&CefString>) {
+        fn on_loading_progress_change(&self, browser: Option<&mut Browser>, _progress: f64) {
+            refresh_security(&self.nav, browser.as_deref());
+        }
+        fn on_address_change(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, url: Option<&CefString>) {
             if frame.is_some_and(|f| f.is_main() != 0) {
+                // Pinned CEF emits this after commit, including same-document
+                // navigation where it intentionally omits OnLoadStart.
+                self.nav.borrow_mut().security_pending = false;
                 let field = self.nav.borrow().address.clone();
                 if let Some(field) = field { field.set_text(url); }
+                refresh_security(&self.nav, browser.as_deref());
+                smoke_event("connection_security_address_committed");
             }
         }
         fn on_title_change(&self, browser: Option<&mut Browser>, title: Option<&CefString>) {
@@ -1089,6 +1156,15 @@ wrap_display_handler! {
                         state.title = title.clone();
                         changed
                     };
+                    if title_changed && SMOKE_LOG.get().is_some() && std::env::args().any(|a| a == "--test-native-security-panel") {
+                        if title == "ChroMinimum test security panel open" {
+                            SecurityIndicator::new(self.nav.clone()).on_button_pressed(None);
+                        } else if title == "ChroMinimum test security panel inspect" {
+                            security_panel::inspect(&self.nav);
+                        } else if title == "ChroMinimum test security panel close" {
+                            security_panel::toggle(&self.nav);
+                        }
+                    }
                     if title == "ChroMinimum smoke JS OK" { smoke_event("fixture_javascript_ok"); }
                     if SMOKE_LOG.get().is_some() && std::env::args().any(|a| a == "--test-external-protocols")
                         && let Some(url) = title.strip_prefix("ChroMinimum test external address ")
@@ -1402,7 +1478,7 @@ wrap_resource_request_handler! {
 }
 
 wrap_request_handler! {
-    struct SinglePageLinks;
+    struct SinglePageLinks { nav: Nav }
     impl RequestHandler {
         fn resource_request_handler(&self, _browser: Option<&mut Browser>, _frame: Option<&mut Frame>, request: Option<&mut Request>, _is_navigation: i32, _is_download: i32, _request_initiator: Option<&CefString>, _disable_default_handling: Option<&mut i32>) -> Option<ResourceRequestHandler> {
             request.filter(|r| external_protocol::is_external(&CefString::from(&r.url()).to_string())).map(|r| {
@@ -1421,6 +1497,11 @@ wrap_request_handler! {
                 }) {
                 smoke_event("test_numeric_protocol_rewritten_as_web_blocked");
                 return 1;
+            }
+            if _frame.as_ref().is_some_and(|f| f.is_main() != 0) {
+                self.nav.borrow_mut().security_failed = false;
+                self.nav.borrow_mut().security_pending = true;
+                show_security(&self.nav, connection_security::State::Unknown);
             }
             if request.is_some_and(|r| external_protocol::is_external(&CefString::from(&r.url()).to_string())) { smoke_event("external_before_browse_allowed"); }
             0
@@ -1445,7 +1526,7 @@ wrap_life_span_handler! {
             if self.smoke && let Some(browser) = browser {
                     let mut close = SmokeClose::new(browser.clone());
                     // Navigation closes on WindowProbe completion; retain a bounded watchdog.
-                    let timeout = if std::env::args().any(|a| a == "--test-chrome-downloads" || a == "--test-external-protocols") {
+                    let timeout = if std::env::args().any(|a| a == "--test-chrome-downloads" || a == "--test-external-protocols" || a == "--test-native-security-panel") {
                         600000
                     } else if std::env::args().any(|a| a == "--exercise-updater") {
                         120000
@@ -1484,12 +1565,20 @@ wrap_life_span_handler! {
 wrap_load_handler! {
     struct LoadObserver { nav: Nav }
     impl LoadHandler {
-        fn on_loading_state_change(&self, _browser: Option<&mut Browser>, loading: i32, back: i32, forward: i32) {
+        fn on_load_start(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, _transition: TransitionType) {
+            if frame.is_some_and(|f| f.is_main() != 0) {
+                self.nav.borrow_mut().security_pending = false;
+                refresh_security(&self.nav, browser.as_deref());
+            }
+        }
+
+        fn on_loading_state_change(&self, browser: Option<&mut Browser>, loading: i32, back: i32, forward: i32) {
             let (back_button, forward_button, reload_button) = {
                 let mut state = self.nav.borrow_mut();
                 state.loading = loading != 0;
                 (state.back.clone(), state.forward.clone(), state.reload.clone())
             };
+            refresh_security(&self.nav, browser.as_deref());
             if let Some(button) = back_button { button.set_enabled(back); }
             if let Some(button) = forward_button { button.set_enabled(forward); }
             if let Some(button) = reload_button {
@@ -1504,8 +1593,9 @@ wrap_load_handler! {
                 toolbar_style::apply(&button, icon, button.has_focus() != 0);
             }
         }
-        fn on_load_end(&self, _browser: Option<&mut Browser>, frame: Option<&mut Frame>, status: i32) {
+        fn on_load_end(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, status: i32) {
             if let Some(frame) = frame.as_ref() && frame.is_main() != 0 {
+                refresh_security(&self.nav, browser.as_deref());
                 smoke_event(&format!("main_frame_url={}", CefString::from(&frame.url())));
             }
             if frame.is_some_and(|f| f.is_main() != 0) {
@@ -1534,6 +1624,14 @@ wrap_load_handler! {
             if frame.is_some_and(|f| f.is_main() != 0) {
                 #[cfg(target_os = "windows")]
                 core_updates::healthy(); // A network/TLS failure is not a failed engine startup.
+                if code != Errorcode::ABORTED {
+                    self.nav.borrow_mut().security_failed = true;
+                    let raw = code.get_raw();
+                    let security = if (-299..=-200).contains(&raw) {
+                        connection_security::State::CertificateError
+                    } else { connection_security::State::LoadError };
+                    show_security(&self.nav, security);
+                }
                 smoke_event(&format!("main_frame_error; code={code:?}"));
                 eprintln!("ChroMinimum main frame load error: {code:?}");
             }
