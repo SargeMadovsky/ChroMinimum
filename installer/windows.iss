@@ -10,20 +10,20 @@
   #define ProductKey "ChroMinimumInstallerTest"
   #define ApplicationKey "chrominimum-installer-test.exe"
   #define ProductId "{A2E35663-B679-48AC-B955-93675043DB12}"
-  #define OutputName "ChroMinimum-0.0.1-alpha.8-test-setup-x64"
+  #define OutputName "ChroMinimum-0.0.1-alpha.9-test-setup-x64"
 #else
   #define ProductName "ChroMinimum"
   #define ProductKey "ChroMinimum"
   #define ApplicationKey "chrominimum.exe"
   #define ProductId "{50721CF3-BB5E-4C4A-97F2-960DE6E8AE01}"
-  #define OutputName "ChroMinimum-0.0.1-alpha.8-setup-x64"
+  #define OutputName "ChroMinimum-0.0.1-alpha.9-setup-x64"
 #endif
 
 [Setup]
 AppId={{#ProductId}
 AppName={#ProductName}
-AppVersion=0.0.1-alpha.8
-VersionInfoVersion=0.0.1.8
+AppVersion=0.0.1-alpha.9
+VersionInfoVersion=0.0.1.9
 AppPublisher=ChroMinimum contributors
 AppPublisherURL=https://github.com/SargeMadovsky/ChroMinimum
 DefaultDirName={localappdata}\Programs\{#ProductKey}

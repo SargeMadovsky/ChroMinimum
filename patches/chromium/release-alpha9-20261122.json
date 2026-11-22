@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "status": "planned_not_built_not_published",
+  "version": "0.0.1-alpha.9",
+  "base_recipe": "platform-codecs-154-win64.json",
+  "additional_patches_in_order": [
+    {"patch": "0012-cef-native-external-protocols.patch", "sha256": "1228acffcfc445f3249a7515b8dca9beabe0f128d9f073b30a1cd78a4899c0d4"},
+    {"patch": "0013-cef-explicit-numeric-protocol.patch", "sha256": "03c47a248683c583a89af030bf5882a2d37cc75e72290740a0c3fe42173be6f3"},
+    {"patch": "0005-download-bubble-anchor.patch", "sha256": "653bd68a406c3a23b40dba94f1139590e7c97452efc8072d47b3740380927803"},
+    {"patch": "0014-download-progress-ring.patch", "sha256": "7d2bcb141b529dcd45c17eb229294554a8f987d066470d7eaa165d27863e09ac"},
+    {"patch": "0015-download-history-current-tab.patch", "sha256": "347fc16c55326187bdf8e248a2e0cd99f6b3ab04fd52abb3783f07dbb9e43983"},
+    {"patch": "0016-native-security-page.patch", "sha256": "6901dfef4564184213b7eddd22fca713fda34f23eb12ca55bef8df4db64a7f52"},
+    {"patch": "0017-certificate-viewer-ui-disposition.patch", "sha256": "5594ae26a860bd3872f4c8c9c020ef242fba5fc7fd26362db5e54a63547c48db"}
+  ],
+  "shell_cargo_features": ["windows-platform-codecs"],
+  "core_candidate": {
+    "libcef_sha256": "c30ea9f93a60a4506b5c9455bd5b85ab360cd4675708a7c3dc36f97730647d26",
+    "libcef_bytes": 307123200,
+    "built_with": "scripts/build-native-security-core.py, then scripts/build-certificate-viewer-core.py (isolated candidate, base ffe32909...)",
+    "runtime_dir": ".local/native-security-20261103/viewer-candidate-v1/runtime",
+    "note": "The 0017 libcef is reused; no new CEF link is planned for alpha.9. Only the shell (chrominimum.dll/exe) is rebuilt for the new version string."
+  },
+  "resources_branding_policy": "downloads-branding-154.json",
+  "scope": "Native PageInfo security page and certificate viewer (D043). No other feature changes.",
+  "known_limitations": [
+    "One unreproduced owner-reported exit when switching the Windows theme (D043 note, 2026-11-22)",
+    "Cold first launch from a hard disk drive can take 8-16 s (E: HDD measured); NVMe ~1.1 s",
+    "Certificate viewer content keeps a light background",
+    "No bit-identical clean full rebuild claimed; source materials are not a distribution clearance"
+  ],
+  "pending_before_publication": [
+    "Rebuild shell as alpha.9 and re-pin chrominimum.dll",
+    "Runtime-manifest against the candidate (only chrominimum.dll/exe expected to differ)",
+    "TestInstall EN/RU, upgrade from alpha.8, data preserved, uninstall",
+    "media/download/protocol regression on the 0017 core",
+    "Startup/memory comparison with alpha.8 shell",
+    "Owner approval to sign and publish"
+  ]
+}
