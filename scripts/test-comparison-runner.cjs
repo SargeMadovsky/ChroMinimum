@@ -5,6 +5,7 @@ test('rotated schedule includes all three browsers in every round',()=>{
  const rows=schedule(5);assert.equal(rows.length,15);
  for(let r=1;r<=5;r++)assert.deepEqual(rows.filter(x=>x.round===r).map(x=>x.browser).sort(),['CM','Chrome','UC']);
  assert.deepEqual(rows.slice(0,3).map(x=>x.browser),['CM','UC','Chrome']);assert.equal(rows[3].browser,'UC');
+ assert.equal(schedule(4,['CM','UC','Chrome','Helium']).length,16);assert.equal(schedule(2,['CM','UC','Chrome','Helium'])[4].browser,'UC');
  assert.throws(()=>schedule(0));assert.throws(()=>schedule(1.5));
 });
 test('tampered input is rejected before browser launch',()=>{

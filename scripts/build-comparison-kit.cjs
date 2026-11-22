@@ -23,7 +23,7 @@ async function main(){
  fs.mkdirSync(output,{recursive:false});
  const config={schema:1,root:'..',readiness:'private portable comparison; documented scenario limitations',fixture:null,browsers:{},game:null};
  const entry=name=>({path:name.replaceAll(path.sep,'/'),sha256:hashFile(path.join(output,name))});
- for(const name of ['CM','UC','Chrome']){
+ for(const name of Object.keys(inputs.browsers)){
   console.log('Copying '+name+'…');const browser=inputs.browsers[name],source=path.dirname(browser.exe.path),dest=path.join(output,'browsers',name);copyTree(source,dest);
   config.browsers[name]={exe:entry(path.join('browsers',name,path.basename(browser.exe.path))),engine:entry(path.join('browsers',name,path.relative(source,browser.engine.path))),fileVersion:browser.fileVersion};
  }

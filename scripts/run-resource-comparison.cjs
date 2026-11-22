@@ -28,7 +28,7 @@ do{result.samples.push(state());await sleep(1000);}while(performance.now()-start
 await fetch('/window-end',{method:'POST'});await fetch('/report',{method:'POST',body:JSON.stringify(result)});})();
 </script>`;
 function validState(s){return s&&s.focused&&s.visibility==='visible'&&s.width===1000&&s.height===600&&s.dpr===1&&s.scale===1&&s.fullyVisible;}
-function order(round){const n=['CM','UC','Chrome'];return n.map((_,i)=>n[(round+i)%3]);}
+function order(round,n=['CM','UC','Chrome']){return n.map((_,i)=>n[(round+i)%n.length]);}
 async function attempt({inputs,name,scenario,base,dir}){
  fs.mkdirSync(dir);const exe=inputs.browsers[name].exe.path;
  const data=fs.mkdtempSync(path.join(os.tmpdir(),'ChroMinimum-resources-'));
@@ -133,7 +133,8 @@ async function attempt({inputs,name,scenario,base,dir}){
  }
 }
 function aggregate(results){
- const output={};for(const scenario of ['startup','idle','video','game']){output[scenario]={};for(const name of ['CM','UC','Chrome']){
+ const names=['CM','UC','Chrome'].concat(results.some(r=>r.name==='Helium')?['Helium']:[]);
+ const output={};for(const scenario of ['startup','idle','video','game']){output[scenario]={};for(const name of names){
   const all=results.filter(r=>r.scenario===scenario&&r.name===name),accepted=all.filter(r=>r.valid);
   const keys=scenario==='startup'?['readyMs']:['privateBytesMedian','workingSetBytesMedian','cpuPercentOneCore','cpuPercentMachine'];
   const metrics={};for(const key of keys){const values=accepted.map(r=>scenario==='startup'?r.behavior[key]:r.resources[key]);metrics[key]={values,median:median(values),min:values.length?Math.min(...values):null,max:values.length?Math.max(...values):null};}
@@ -141,7 +142,7 @@ function aggregate(results){
  }}
  for(const scenario of Object.keys(output)){
   output[scenario].cmVersus={};
-  for(const other of ['UC','Chrome']){
+  for(const other of names.slice(1)){
    const metrics={};for(const key of Object.keys(output[scenario].CM.metrics)){
     const cm=output[scenario].CM.metrics[key].median,baseline=output[scenario][other].metrics[key].median;
     metrics[key]={cm,baseline,absoluteSaving:cm!==null&&baseline!==null?baseline-cm:null,percentSaving:cm!==null&&baseline>0?100*(baseline-cm)/baseline:null};
@@ -169,10 +170,11 @@ async function main(){
  if(mode==='--preflight-only'){console.log('Preflight passed; no browsers launched.');return;}
  const bases={};
  try{
-  for(const name of ['CM','UC','Chrome']){console.log('Prepare synthetic profile: '+name);const r=await attempt({inputs,name,scenario:'prepare',dir:path.join(out,'prepare-'+name)});if(!r.summary.valid)throw Error('Profile preparation rejected: '+name);bases[name]=r.data;}
+  const names=Object.keys(inputs.browsers);
+  for(const name of names){console.log('Prepare synthetic profile: '+name);const r=await attempt({inputs,name,scenario:'prepare',dir:path.join(out,'prepare-'+name)});if(!r.summary.valid)throw Error('Profile preparation rejected: '+name);bases[name]=r.data;}
   for(const scenario of ['startup','idle','video','game']){
    const rounds=mode==='--pilot'?1:scenario==='startup'?10:5;
-   for(let round=0;round<rounds;round++)for(const name of order(round)){
+   for(let round=0;round<rounds;round++)for(const name of order(round,names)){
     console.log(`${scenario} ${round+1}/${rounds}: ${name}. Keep window visible and focused.`);
     const dir=path.join(out,scenario+'-'+String(round+1).padStart(2,'0')+'-'+name);
     const r=await attempt({inputs,name,scenario,base:bases[name],dir});

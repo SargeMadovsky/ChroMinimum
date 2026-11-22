@@ -24,5 +24,5 @@ test('retained CPU ledger counts newly born processes and final CPU after exit',
 test('visibility, focus and geometry are required; browser order rotates',()=>{
  const state={focused:true,visibility:'visible',width:1000,height:600,dpr:1,scale:1,fullyVisible:true};assert.equal(validState(state),true);
  for(const delta of [{focused:false},{fullyVisible:false},{scale:1.25}])assert.equal(validState({...state,...delta}),false);
- assert.deepEqual(order(0),['CM','UC','Chrome']);assert.deepEqual(order(1),['UC','Chrome','CM']);assert.deepEqual(order(2),['Chrome','CM','UC']);
+ assert.deepEqual(order(0),['CM','UC','Chrome']);assert.deepEqual(order(1),['UC','Chrome','CM']);assert.deepEqual(order(2),['Chrome','CM','UC']);assert.deepEqual(order(1,['CM','UC','Chrome','Helium']),['UC','Chrome','Helium','CM']);
 });

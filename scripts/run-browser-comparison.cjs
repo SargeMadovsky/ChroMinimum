@@ -2,10 +2,9 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {hashFile}=require('./benchmark-file-hash.cjs');
-function schedule(repeats){
+function schedule(repeats,names=['CM','UC','Chrome']){
  if(!Number.isInteger(repeats)||repeats<1||repeats>5)throw Error('Repeats must be 1..5');
- const names=['CM','UC','Chrome'];
- return Array.from({length:repeats},(_,round)=>names.map((_,index)=>({round:round+1,browser:names[(round+index)%3]}))).flat();
+ return Array.from({length:repeats},(_,round)=>names.map((_,index)=>({round:round+1,browser:names[(round+index)%names.length]}))).flat();
 }
 function isAcceptedAttempt(child,summary,lifecycle){return child.status===0&&!child.error&&summary?.valid===true&&lifecycle?.exit===0;}
 function loadInputs(configPath){
@@ -21,7 +20,7 @@ function loadInputs(configPath){
  };
  const fixture=resolveFile(config.fixture);
  const browsers={};
- for(const name of ['CM','UC','Chrome']){
+ for(const name of ['CM','UC','Chrome',...(config.browsers?.Helium?['Helium']:[])]){
   const browser=config.browsers?.[name];if(!browser)throw Error('Missing browser '+name);
   browsers[name]={...browser,exe:resolveFile(browser.exe),engine:resolveFile(browser.engine)};
  }
@@ -40,7 +39,7 @@ function main(){
  const out=path.join(inputs.root,'.local','comparison-runs',new Date().toISOString().replace(/[:.]/g,'-'));
  fs.mkdirSync(out,{recursive:true});
  if(gamePilot&&!inputs.game)throw Error('Pinned game manifest missing');
- const metadata={mode:rtcPilot?'webrtc-pilot':gamePilot?'game-pilot':pilot?'video-pilot':'preflight-only',readyForFinalSuite:false,continueOnFailure,node:process.version,inputs,schedule:schedule(repeats),results:[],limitations:['No real devices, Internet or NAT/TURN WebRTC verification','1000x600 same-origin measurement iframe; outer window dimensions differ','No resource/decoder-backend measurement',rtcPilot?'Local WebRTC file capture + decoded PCM; muted output':gamePilot?'Instrumented fixed-yaw render-loop pilot; 165 Hz reference':'Fresh-profile muted synthetic-video pilot only']};
+ const metadata={mode:rtcPilot?'webrtc-pilot':gamePilot?'game-pilot':pilot?'video-pilot':'preflight-only',readyForFinalSuite:false,continueOnFailure,node:process.version,inputs,schedule:schedule(repeats,Object.keys(inputs.browsers)),results:[],limitations:['No real devices, Internet or NAT/TURN WebRTC verification','1000x600 same-origin measurement iframe; outer window dimensions differ','No resource/decoder-backend measurement',rtcPilot?'Local WebRTC file capture + decoded PCM; muted output':gamePilot?'Instrumented fixed-yaw render-loop pilot; 165 Hz reference':'Fresh-profile muted synthetic-video pilot only']};
  const save=()=>fs.writeFileSync(path.join(out,'run.json'),JSON.stringify(metadata,null,2));save();
  console.log('Reports: '+out);
  const snapshot=spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'comparison-preflight.ps1'),'-OutputPath',path.join(out,'environment.json')],{encoding:'utf8',windowsHide:true,timeout:30000});

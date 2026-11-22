@@ -39,6 +39,17 @@
         "sha256": "e68448d4469e6a3b598cfce48e656a5579decac014407eb4c4967d0677fed2fb"
       },
       "fileVersion": "155.0.8059.85"
+    },
+    "Helium": {
+      "exe": {
+        "path": "test-profiles/comparison-2026-11-22/browsers/helium/chrome.exe",
+        "sha256": "7be513a43457cfa464f2f2049d9e962aa528a076ba7ea7f41ba329d84397b7b3"
+      },
+      "engine": {
+        "path": "test-profiles/comparison-2026-11-22/browsers/helium/0.21.1.1/chrome.dll",
+        "sha256": "05279e0fd6711ad5c31b710da5c3394a376221236eb26bb9e41d250c13d4ecf3"
+      },
+      "fileVersion": "157.0.8103.38 (Helium 0.21.1.1)"
     }
   },
   "game": {
