@@ -103,6 +103,9 @@ async function main() {
     if(nativeBubble && mode!=='links') {
       for(let i=0;i<300 && !fs.readdirSync(downloads).length;i++){requireRunning(state);await delay(100);}
       assert(fs.readdirSync(downloads).length,'Download never started');
+      // The file appears before the bubble model; an earlier press is a real empty history.
+      for(let i=0;i<100 && !readRings().some(r=>r.count>0);i++){requireRunning(state);await delay(100);}
+      assert(readRings().some(r=>r.count>0),'Download never reached the bubble model');
       let before=readBubbles().filter(b=>b.mode==='complete').length;
       await pressDownloads();
       if(readBubbles().filter(b=>b.mode==='complete').length===before) await pressDownloads();
@@ -118,6 +121,7 @@ async function main() {
         resizeGeometry=readBubbles().filter(b=>b.mode==='complete').at(-1);assert(resizeGeometry);checkGeometry(resizeGeometry);
         assert.notEqual(resizeGeometry.anchor[0],bubbleGeometry.anchor[0],'Anchor did not move after native resize');
       }
+      assert(!cefLog().includes('CM_DOWNLOAD_EMPTY_HISTORY_CURRENT_TAB'),'Button replaced the site despite download history');
       // The native panel and full history are separate UI. Ctrl+J opens WebUI.
       await evaluate('document.title="ChroMinimum test downloads shortcut"');
       await waitUrl('chrome://downloads/');

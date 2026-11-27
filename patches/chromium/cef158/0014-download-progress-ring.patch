@@ -1,0 +1,153 @@
+diff --git a/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc b/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
+--- a/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
++++ b/chrome/browser/ui/views/download/bubble/download_toolbar_ui_controller.cc
+@@ -39,6 +39,7 @@ DEFINE_USER_DATA(DownloadToolbarUIController);
+ #include "chrome/browser/ui/views/download/bubble/download_bubble_started_animation_views.h"
+ #include "chrome/browser/ui/views/frame/browser_view.h"
+ #include "chrome/browser/ui/views/toolbar/download_button.h"
++#include "chrome/browser/ui/views/toolbar/download_button_views.h"
+ #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
+ #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+ #include "chrome/grit/generated_resources.h"
+@@ -348,6 +349,32 @@ void DownloadToolbarUIController::OnOfflineItemsInitialized() {
+ }
+ 
+ void DownloadToolbarUIController::UpdateIcon() {
++  // The CEF toolbar has its own button; reuse the native progress renderer
++  // and event-driven controller state, without touching the complete bubble.
++  if (auto* anchor = GetChroMinimumDownloadAnchor(browser_view_)) {
++    redraw_progress_soon_ = false;
++    ActionItemProgressRingStatus status;
++    if (state_ == IconState::kComplete || progress_info_.download_count == 0) {
++      status = ActionItemProgressRingStatus::kIdle;
++    } else if (is_dormant_) {
++      status = ActionItemProgressRingStatus::kDormant;
++    } else if (ShouldShowScanningAnimation()) {
++      status = ActionItemProgressRingStatus::kScanning;
++    } else {
++      status = ActionItemProgressRingStatus::kDownloading;
++    }
++    const bool probe = IsChroMinimumDownloadProbe();
++    const bool drawn = UpdateChroMinimumDownloadRing(
++        *anchor, status, progress_info_.progress_percentage,
++        active_ == IconActive::kActive, probe);
++    if (probe) {
++      LOG(INFO) << "CM_DOWNLOAD_RING state=" << static_cast<int>(status)
++                << " count=" << progress_info_.download_count
++                << " percent=" << progress_info_.progress_percentage
++                << " drawn=" << drawn;
++    }
++    return;
++  }
+   auto* button = GetDownloadsButton(browser_view_);
+   if (!button) {
+     return;
+diff --git a/chrome/browser/ui/views/toolbar/download_button_views.cc b/chrome/browser/ui/views/toolbar/download_button_views.cc
+--- a/chrome/browser/ui/views/toolbar/download_button_views.cc
++++ b/chrome/browser/ui/views/toolbar/download_button_views.cc
+@@ -14,6 +14,7 @@
+ #include "base/functional/bind.h"
+ #include "base/functional/callback.h"
+ #include "base/i18n/number_formatting.h"
++#include "base/logging.h"
+ #include "base/memory/ptr_util.h"
+ #include "base/notreached.h"
+ #include "base/strings/strcat.h"
+@@ -102,6 +103,8 @@ class DownloadProgressRing : public views::View, gfx::AnimationDelegate {
+ 
+   ActionItemProgressRingStatus GetStatus() const { return status_; }
+ 
++  void SetLogPaint(bool log_paint) { log_paint_ = log_paint; }
++
+   void UpdateColors(SkColor background_color, SkColor progress_color) {
+     background_color_ = background_color;
+     progress_color_ = progress_color;
+@@ -136,6 +139,12 @@ class DownloadProgressRing : public views::View, gfx::AnimationDelegate {
+       return;
+     }
+ 
++    if (log_paint_) {
++      LOG(INFO) << "CM_DOWNLOAD_RING_PAINT state=" << static_cast<int>(status_)
++                << " percent=" << download_progress_percentage_
++                << " width=" << width() << " height=" << height();
++    }
++
+     int ring_radius = ui::TouchUiController::Get()->touch_ui()
+                           ? kProgressRingRadiusTouchMode
+                           : kProgressRingRadius;
+@@ -177,6 +186,7 @@ class DownloadProgressRing : public views::View, gfx::AnimationDelegate {
+ 
+   ActionItemProgressRingStatus status_ = ActionItemProgressRingStatus::kIdle;
+   int download_progress_percentage_ = 0;
++  bool log_paint_ = false;
+   SkColor background_color_ = SK_ColorBLACK;
+   SkColor progress_color_ = SK_ColorBLACK;
+   gfx::SlideAnimation scanning_animation_{this};
+@@ -424,6 +434,39 @@ views::ImageView* DownloadButtonViews::GetImageBadgeForTesting() {
+   return &DownloadsImageBadge::GetOrInstall(GetButton());
+ }
+ 
++bool UpdateChroMinimumDownloadRing(views::View& anchor,
++                                   ActionItemProgressRingStatus status,
++                                   int progress_percentage,
++                                   bool is_active,
++                                   bool log_paint) {
++  DownloadProgressRing& ring = DownloadProgressRing::GetOrInstall(anchor);
++  ring.SetLogPaint(log_paint);
++  ring.SetBoundsRect(anchor.GetLocalBounds());
++  if (status == ActionItemProgressRingStatus::kIdle) {
++    ring.SetIdle();
++    return ring.IsDrawn();
++  }
++  const ui::ColorProvider* colors = anchor.GetColorProvider();
++  CHECK(colors);
++  const bool is_dormant = status == ActionItemProgressRingStatus::kDormant;
++  const SkColor disabled = colors->GetColor(kColorToolbarButtonIconInactive);
++  ring.UpdateColors(
++      is_dormant ? disabled
++                 : colors->GetColor(kColorDownloadToolbarButtonRingBackground),
++      is_dormant ? disabled
++                 : colors->GetColor(is_active
++                                        ? kColorDownloadToolbarButtonActive
++                                        : kColorDownloadToolbarButtonInactive));
++  if (is_dormant) {
++    ring.SetDormant();
++  } else if (status == ActionItemProgressRingStatus::kScanning) {
++    ring.SetScanning();
++  } else {
++    ring.SetDownloading(progress_percentage);
++  }
++  return ring.IsDrawn();
++}
++
+ PinnedActionToolbarButton& DownloadButtonViews::GetButton() const {
+   PinnedActionToolbarButton* button =
+       container_->GetButtonFor(kActionShowDownloads);
+diff --git a/chrome/browser/ui/views/toolbar/download_button_views.h b/chrome/browser/ui/views/toolbar/download_button_views.h
+--- a/chrome/browser/ui/views/toolbar/download_button_views.h
++++ b/chrome/browser/ui/views/toolbar/download_button_views.h
+@@ -11,6 +11,10 @@
+ class PinnedActionToolbarButton;
+ class PinnedToolbarActionsContainer;
+ 
++namespace views {
++class View;
++}  // namespace views
++
+ // Views implementation of DownloadButton. Wraps the downloads button in a
+ // PinnedToolbarActionsContainer. The button is looked up on every call since
+ // the container creates and destroys it as it's pinned, unpinned, popped out,
+@@ -47,4 +51,13 @@ class DownloadButtonViews : public DownloadButton {
+   const raw_ref<PinnedToolbarActionsContainer> container_;
+ };
+ 
++// ChroMinimum: the CEF Views toolbar owns its downloads button, so the native
++// ring is drawn directly on that anchor. Returns whether the ring is drawn.
++// `log_paint` is set only by the smoke-test download probe.
++bool UpdateChroMinimumDownloadRing(views::View& anchor,
++                                   ActionItemProgressRingStatus status,
++                                   int progress_percentage,
++                                   bool is_active,
++                                   bool log_paint);
++
+ #endif  // CHROME_BROWSER_UI_VIEWS_TOOLBAR_DOWNLOAD_BUTTON_VIEWS_H_

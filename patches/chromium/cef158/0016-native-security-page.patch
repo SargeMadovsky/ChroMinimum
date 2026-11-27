@@ -1,0 +1,145 @@
+diff --git a/chrome/browser/ui/browser_command_controller.cc b/chrome/browser/ui/browser_command_controller.cc
+--- a/chrome/browser/ui/browser_command_controller.cc
++++ b/chrome/browser/ui/browser_command_controller.cc
+@@ -11,6 +11,12 @@
+ 
+ #include "base/check_deref.h"
+ #include "base/command_line.h"
++#include "base/no_destructor.h"
++#include "chrome/browser/ui/views/page_info/page_info_bubble_specification.h"
++#include "chrome/browser/ui/views/page_info/page_info_bubble_view.h"
++#include "ui/views/controls/label.h"
++#include "ui/views/view_utils.h"
++
+ #include "base/debug/debugging_buildflags.h"
+ #include "base/debug/profiler.h"
+ #include "base/feature_list.h"
+@@ -226,6 +232,87 @@ namespace chrome {
+ 
+ namespace {
+ 
++// Private browser-process commands, shared with the ChroMinimum Rust toolbar.
++// No public CEF ABI change and no renderer/IPC entry point.
++constexpr int kChroMinimumSecurityAnchor = 0x434d5301;
++constexpr int kChroMinimumSecurityCommand = 0x434d5302;
++constexpr int kChroMinimumSecurityInspect = 0x434d5303;
++
++bool IsChroMinimumSecurityProbe() {
++  const auto* command = base::CommandLine::ForCurrentProcess();
++  return command->HasSwitch("smoke-test") &&
++         command->HasSwitch("test-native-security-panel");
++}
++
++base::WeakPtr<views::Widget>& ChroMinimumSecurityWidget() {
++  static base::NoDestructor<base::WeakPtr<views::Widget>> widget;
++  return *widget;
++}
++
++void LogChroMinimumSecurityText(const views::View* view) {
++  if (const auto* label = views::AsViewClass<views::Label>(view)) {
++    LOG(INFO) << "CM_SSL_LABEL " << base::UTF16ToUTF8(label->GetText());
++  }
++  for (const auto& child : view->children()) {
++    LogChroMinimumSecurityText(child);
++  }
++}
++
++void ShowChroMinimumSecurityInfo(BrowserWindowInterface* browser, bool inspect_only) {
++  auto* view = BrowserView::GetBrowserViewForBrowser(browser);
++  if (!view || !view->GetWidget()) {
++    return;
++  }
++  auto* anchor = view->GetWidget()->GetRootView()->GetViewByID(
++      kChroMinimumSecurityAnchor);
++  auto* contents = browser->tab_strip_model()->GetActiveWebContents();
++  auto* entry = contents ? contents->GetController().GetVisibleEntry() : nullptr;
++  if (!anchor || !anchor->IsDrawn() || !entry || entry->IsInitialEntry()) {
++    return;
++  }
++  auto& current = ChroMinimumSecurityWidget();
++  if (inspect_only) {
++    if (IsChroMinimumSecurityProbe() && current && !current->IsClosed()) {
++      LogChroMinimumSecurityText(current->GetContentsView());
++      LOG(INFO) << "CM_SSL_INSPECT visible=" << current->IsVisible();
++    }
++    return;
++  }
++  if (current && !current->IsClosed()) {
++    current->CloseWithReason(views::Widget::ClosedReason::kCloseButtonClicked);
++    current.reset();
++    if (IsChroMinimumSecurityProbe()) {
++      LOG(INFO) << "CM_SSL_CLOSED";
++    }
++    return;
++  }
++  auto specification = PageInfoBubbleSpecification::Builder(
++      views::BubbleAnchor(anchor), view->GetWidget()->GetNativeWindow(),
++      contents, entry->GetVirtualURL())
++      .HideExtendedSiteInfo()
++      .AddInitializedCallback(base::DoNothing())
++      .AddPageInfoClosingCallback(base::DoNothing())
++      .Build();
++  auto* bubble = PageInfoBubbleView::CreatePageInfoBubble(std::move(specification));
++  const bool security_page =
++      static_cast<PageInfoBubbleViewBase*>(bubble)->type() ==
++      PageInfoBubbleViewBase::BUBBLE_PAGE_INFO;
++  if (security_page) {
++    static_cast<PageInfoBubbleView*>(bubble)->OpenSecurityPage();
++  }
++  current = bubble->GetWidget()->GetWeakPtr();
++  current->Show();
++  if (IsChroMinimumSecurityProbe()) {
++    const auto a = anchor->GetBoundsInScreen();
++    const auto b = current->GetWindowBoundsInScreen();
++    LOG(INFO) << "CM_SSL_OPEN security_page=" << security_page
++              << " anchor=" << a.ToString() << " bubble=" << b.ToString();
++    LogChroMinimumSecurityText(current->GetContentsView());
++  }
++}
++
++
++
+ // Ensures that - if we have not popped up an infobar to prompt the user to e.g.
+ // reload the current page - that the content pane of the browser is refocused.
+ void AppInfoDialogClosedCallback(SessionID session_id,
+@@ -720,6 +807,14 @@ void BrowserCommandController::HandleCommandWithDisposition(
+   // The order of commands in this switch statement must match the function
+   // declaration order in browser.h!
+   switch (id) {
++    case kChroMinimumSecurityCommand:
++      ShowChroMinimumSecurityInfo(browser_, false);
++      break;
++    case kChroMinimumSecurityInspect:
++      if (IsChroMinimumSecurityProbe()) {
++        ShowChroMinimumSecurityInfo(browser_, true);
++      }
++      break;
+     // Navigation commands
+     case IDC_BACK:
+       GoBack(browser_, disposition);
+@@ -1980,6 +2075,9 @@ void BrowserCommandController::InitCommandState() {
+   command_updater_->UpdateCommandEnabled(
+       IDC_SHOW_TABS_FROM_OTHER_DEVICES_SIDE_PANEL,
+       TabsFromOtherDevicesSidePanelCoordinator::IsSupported(profile()));
++  command_updater_->UpdateCommandEnabled(kChroMinimumSecurityCommand, true);
++  command_updater_->UpdateCommandEnabled(kChroMinimumSecurityInspect,
++                                         IsChroMinimumSecurityProbe());
+   command_updater_->UpdateCommandEnabled(IDC_SHOW_DOWNLOADS, true);
+   command_updater_->UpdateCommandEnabled(IDC_SHOW_COMMENTS_SIDE_PANEL, true);
+   command_updater_->UpdateCommandEnabled(IDC_FIND_AND_EDIT_MENU, true);
+diff --git a/chrome/browser/ui/ui_features.cc b/chrome/browser/ui/ui_features.cc
+--- a/chrome/browser/ui/ui_features.cc
++++ b/chrome/browser/ui/ui_features.cc
+@@ -162,8 +162,10 @@ bool IsSettingsSearch2026Enabled() {
+ }
+ 
+ bool ShouldUseActionsForBrowserCommands() {
+-  return base::FeatureList::IsEnabled(kUseActionsForBrowserCommands) ||
+-         base::FeatureList::IsEnabled(kAppMenuGlowUp);
++  // ChroMinimum: the CEF toolbar uses private browser commands and the
++  // download-bubble branch of HandleCommandWithDisposition. CommandActionUpdater
++  // supports only mapped IDs and bypasses that handler, so keep the legacy path.
++  return false;
+ }
+ 
+ #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
