@@ -7,6 +7,7 @@ mod mac;
 mod address_input;
 mod connection_security;
 mod external_protocol;
+mod page_indicators;
 mod security_panel;
 mod settings_page;
 mod tabs_prototype;
@@ -145,6 +146,12 @@ struct Navigation {
     http_fallback: HttpFallback,
     /// The settings window (D046): reduced toolbar, own size, no address field.
     settings: bool,
+    /// Zoom and mute indicators beside the address field (D049).
+    zoom_indicator: Option<LabelButton>,
+    mute_indicator: Option<LabelButton>,
+    /// Zoom percent the indicator shows; None while it is hidden.
+    zoom_shown: Option<i32>,
+    zoom_observer: Option<Registration>,
 }
 type Nav = UiRef<RefCell<Navigation>>;
 
@@ -468,6 +475,7 @@ fn toolbar(nav: &Nav) -> Option<Panel> {
     let mut view = View::from(&field);
     panel.add_child_view(Some(&mut view));
     layout.set_flex_for_view(Some(&mut view), 1);
+    page_indicators::add_to_toolbar(nav, &panel)?;
     let mut download_delegate = NavigationButton::new(nav.clone(), 4);
     let download_button =
         label_button_create(Some(&mut download_delegate), Some(&CefString::from("")))?;
@@ -557,6 +565,7 @@ fn fill_browser_menu(model: &MenuModel, nav: &Nav) {
                 .into(),
         );
     }
+    page_indicators::fill_menu(model, nav);
     model.add_separator();
     for (id, name, label) in MENU_CHROME {
         model.add_item(id, Some(&CefString::from(label)));
@@ -602,6 +611,11 @@ fn fill_browser_menu(model: &MenuModel, nav: &Nav) {
 }
 
 fn run_menu_command(nav: &Nav, id: i32) {
+    if id == page_indicators::MENU_MUTE {
+        page_indicators::toggle_mute(nav);
+        smoke_event(&format!("menu_command; id={id}"));
+        return;
+    }
     if id == MENU_SETTINGS {
         show_settings_window();
         smoke_event(&format!("menu_command; id={id}"));
@@ -617,6 +631,7 @@ fn run_menu_command(nav: &Nav, id: i32) {
     };
     if let Some((_, command)) = MENU_ZOOM.iter().find(|item| item.0 == id) {
         host.zoom(*command);
+        page_indicators::refresh_zoom(nav);
     } else if let Some((_, name, _)) = MENU_CHROME.iter().find(|item| item.0 == id) {
         match chrome_command(name).filter(|c| host.can_execute_chrome_command(*c) != 0) {
             Some(command) => {
@@ -1722,6 +1737,7 @@ wrap_display_handler! {
                 self.nav.borrow_mut().security_pending = false;
                 show_address(&self.nav, &url.map(CefString::to_string).unwrap_or_default());
                 refresh_security(&self.nav, browser.as_deref());
+                page_indicators::page_changed(&self.nav);
                 smoke_event("connection_security_address_committed");
             }
         }
@@ -1837,6 +1853,7 @@ wrap_task! {
                     .map(|i| format!("{}:{}:{}:{}", model.command_id_at(i), model.is_enabled_at(i), model.is_checked_at(i), CefString::from(&model.label_at(i))))
                     .collect();
                 smoke_event(&format!("menu_items; {}", items.join("|")));
+            } else if page_indicators::probe(&self.nav, command) {
             } else if let Some(id) = command.strip_prefix("run:").and_then(|id| id.parse().ok()) {
                 delegate.execute_command(None, id, EventFlags::default());
             }
@@ -2238,6 +2255,8 @@ wrap_life_span_handler! {
                     frame.load_url(Some(&CefString::from(settings_page::URL)));
                 }
                 smoke_event("settings_window_opened");
+            } else if let Some(browser) = browser.as_ref() {
+                page_indicators::observe(&self.nav, browser);
             }
             #[cfg(target_os = "macos")]
             mac::set_browser(browser.clone());
@@ -2266,6 +2285,7 @@ wrap_life_span_handler! {
             if let Some(closed) = _browser.map(|b| b.identifier()) {
                 POPUP_BOUNDS.with_borrow_mut(|pending| pending.retain(|(id, _, _)| *id != closed));
             }
+            page_indicators::closed(&self.nav);
             self.nav.borrow_mut().browser = None;
             if self.nav.borrow().settings {
                 settings_page::closed();
@@ -2370,6 +2390,7 @@ wrap_load_handler! {
         fn on_load_end(&self, browser: Option<&mut Browser>, frame: Option<&mut Frame>, status: i32) {
             if let Some(frame) = frame.as_ref() && frame.is_main() != 0 {
                 refresh_security(&self.nav, browser.as_deref());
+                page_indicators::page_changed(&self.nav);
                 smoke_event(&format!("main_frame_url={}", CefString::from(&frame.url())));
             }
             if frame.is_some_and(|f| f.is_main() != 0) {

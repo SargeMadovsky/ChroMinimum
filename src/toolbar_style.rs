@@ -10,6 +10,8 @@ pub enum Icon {
     Download,
     DownloadHidden,
     Menu,
+    /// Page audio muted (D049).
+    Muted,
 }
 
 fn mask(icon: Icon) -> &'static [u8; 576] {
@@ -21,6 +23,7 @@ fn mask(icon: Icon) -> &'static [u8; 576] {
         Icon::Download => include_bytes!("../assets/icons/download.alpha"),
         Icon::DownloadHidden => &[0; 576],
         Icon::Menu => include_bytes!("../assets/icons/menu.alpha"),
+        Icon::Muted => include_bytes!("../assets/icons/muted.alpha"),
     }
 }
 
